@@ -1,0 +1,70 @@
+// A game: its name, the properties of its figure and its zombies, the goban
+// being played, and the save it lives in between runs. What happens on the
+// goban isn't saved: every Start begins it anew (see Goban).
+//
+// Saves are INI files, one per game, in %APPDATA%\VojackovaHra\saves\ (next
+// to config.ini). A new game gets a save of its own, which Save and quit then
+// writes; loading a game and saving it again writes over the same one.
+
+#pragma once
+
+#include <game/Goban.hpp>
+
+#include <array>
+#include <ctime>
+#include <filesystem>
+#include <optional>
+#include <string>
+#include <vector>
+
+struct Game {
+  // The board the save keeps is SIZE x SIZE squares, as the goban is.
+  static constexpr int SIZE = Goban::SIZE;
+
+  // What is on a square, as its save writes it. So far there is nothing to
+  // put anywhere, so every square is empty.
+  static constexpr char EMPTY = '.';
+
+  // The longest name a game can have, in characters.
+  static constexpr size_t MAX_NAME = 15;
+
+  std::string           name;   // what the player called it, as the Load game page lists it
+  std::filesystem::path path;   // the save
+  std::array<std::array<char, SIZE>, SIZE> board;
+
+  // The basic properties of the figure and of every white zombie. The same
+  // for every game so far, so not saved.
+  Properties figure{ .actions = 2, .lives = 1, .wounds = 1 };
+  Properties zombie{ .actions = 2, .lives = 2, .wounds = 1 };
+
+  // The round being played, from the last Start.
+  Goban goban;
+
+  // A new game called `name`, with an empty board, given a save no other
+  // game has.
+  static Game New(std::string name);
+
+  // The game in the save at `path`; nothing if it can't be read. Squares the
+  // save doesn't have, or has something unknown on, are empty.
+  static std::optional<Game> Load(const std::filesystem::path& path);
+
+  // Writes the game to its save, with the time it was saved. False if it
+  // couldn't be written.
+  bool save() const;
+};
+
+// A save, as the Load game page lists it.
+struct SavedGame {
+  std::filesystem::path path;
+  std::string           name;
+  std::time_t           saved = 0;  // when it was last saved
+};
+
+// Every save there is, the last saved first.
+std::vector<SavedGame> ListSavedGames();
+
+// Deletes the save at `path` for good. False if it couldn't be.
+bool DeleteSave(const std::filesystem::path& path);
+
+// `time` as the Load game page shows it, in local time: "29. 9. 2026 15:30".
+std::string SaveTimeText(std::time_t time);

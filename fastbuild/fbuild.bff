@@ -138,8 +138,9 @@ Exec( 'FontBold' )
 }
 
 // Icons of Factorio's own (its utility sprites, from data/core/graphics/icons/mip):
-// the info mark after a name with a tooltip, the reset button's arrow, and the
-// search button's magnifying glass (data/core/graphics/icons/search.png).
+// the info mark after a name with a tooltip, the reset button's arrow, the
+// delete button's trash can, and the search button's magnifying glass
+// (data/core/graphics/icons/search.png).
 Exec( 'IconInfo' )
 {
   .ExecExecutable = 'build\tools\Embed.exe'
@@ -160,6 +161,13 @@ Exec( 'IconResetWhite' )
   .ExecInput      = 'resources\icons\reset-white.png'
   .ExecOutput     = 'build\generated\IconResetWhite.cpp'
   .ExecArguments  = '"%1" "%2" ICON_RESET_WHITE_PNG ui'
+}
+Exec( 'IconTrash' )
+{
+  .ExecExecutable = 'build\tools\Embed.exe'
+  .ExecInput      = 'resources\icons\trash.png'
+  .ExecOutput     = 'build\generated\IconTrash.cpp'
+  .ExecArguments  = '"%1" "%2" ICON_TRASH_PNG ui'
 }
 Exec( 'IconSearch' )
 {
@@ -227,10 +235,11 @@ ForEach( .Cfg in .Configs )
     .CompilerInputFiles = { 'build\generated\GuiAtlas.cpp', 'build\generated\FontRegular.cpp',
                             'build\generated\FontSemiBold.cpp', 'build\generated\FontBold.cpp',
                             'build\generated\IconInfo.cpp', 'build\generated\IconReset.cpp',
-                            'build\generated\IconResetWhite.cpp', 'build\generated\IconSearch.cpp' }
+                            'build\generated\IconResetWhite.cpp', 'build\generated\IconTrash.cpp',
+                            'build\generated\IconSearch.cpp' }
     .CompilerOutputPath = '$Out$\obj\game\'
     .PreBuildDependencies = { 'GuiAtlas', 'FontRegular', 'FontSemiBold', 'FontBold',
-                              'IconInfo', 'IconReset', 'IconResetWhite', 'IconSearch' }
+                              'IconInfo', 'IconReset', 'IconResetWhite', 'IconTrash', 'IconSearch' }
   }
 
   Executable( 'game-$Config$' )

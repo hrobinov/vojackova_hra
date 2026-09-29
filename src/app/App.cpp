@@ -1,6 +1,7 @@
 #include <app/App.hpp>
 
 #include <app/Config.hpp>
+#include <game/BoardView.hpp>
 #include <ui/Fonts.hpp>
 #include <ui/MainMenu.hpp>
 
@@ -30,6 +31,7 @@ App::App()
 int App::run()
 {
   while (!this->quitRequested) this->frame();
+  if (this->game) this->game->save();
   this->settings.save();  // for the window size, if nothing else
   return 0;
 }
@@ -42,10 +44,18 @@ void App::frame()
   this->updateSettings();
   this->gui.update();
   this->handleMenu();
+  this->updateZombie();
+  // With no lives left the figure is dead: back to the game's menu, as Back
+  // to menu would.
+  if (this->game && this->game->goban.figureLives() == 0 && this->gui.menu().gobanShown()) {
+    this->gui.menu().leaveGoban();
+  }
+  if (this->game) this->gui.menu().showLives(this->game->goban.figureLives());
   if (WindowShouldClose()) this->quitRequested = true;
 
   BeginDrawing();
   ClearBackground(cfg::BACKGROUND_COLOR);
+  if (this->game && this->gui.menu().gobanShown()) DrawBoard(this->game->goban, GetScreenWidth(), GetScreenHeight());
   this->gui.draw();
   EndDrawing();
 }
@@ -54,6 +64,31 @@ void App::handleKeys()
 {
   ui::MainMenu& menu = this->gui.menu();
   if (IsKeyPressed(KEY_ESCAPE)) menu.cancel();
+
+  // The arrow keys move the figure, a square a press -- and on and on while
+  // one is held, as a key held in a text field repeats. Not while paused;
+  // while the zombie moves, Game::move() does nothing.
+  if (this->game && menu.current() == ui::MainMenu::Page::Goban) {
+    const auto pressed = [](int key) { return IsKeyPressed(key) || IsKeyPressedRepeat(key); };
+    if (pressed(KEY_LEFT)) this->game->goban.move(-1, 0);
+    if (pressed(KEY_RIGHT)) this->game->goban.move(1, 0);
+    if (pressed(KEY_UP)) this->game->goban.move(0, -1);
+    if (pressed(KEY_DOWN)) this->game->goban.move(0, 1);
+    // Space waits. Only on a press: held, it would throw the turn away.
+    if (IsKeyPressed(KEY_SPACE)) this->game->goban.wait();
+
+    // A click on a square shoots at it -- which only does anything on the
+    // zombie, in range.
+    if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+      const BoardLayout goban = LayOutBoard(GetScreenWidth(), GetScreenHeight());
+      const Vector2     mouse = GetMousePosition();
+      const int         x     = int(mouse.x) - goban.left;
+      const int         y     = int(mouse.y) - goban.top;
+      if (x >= 0 && y >= 0 && x < goban.side && y < goban.side) {
+        this->game->goban.shoot(Position{ x / goban.square, y / goban.square });
+      }
+    }
+  }
 
   const bool ctrl = IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL);
   if (!ctrl) return;
@@ -68,10 +103,19 @@ void App::handleMenu()
   ui::MainMenu& menu = this->gui.menu();
   switch (menu.takeAction()) {
   case ui::MainMenu::Action::NewGame:
-    // Nothing yet: there is no game to start.
+    this->play(Game::New(menu.newGameName()));
     break;
   case ui::MainMenu::Action::LoadGame:
-    // Nothing yet: there is nothing to load.
+    if (std::optional<Game> loaded = Game::Load(menu.chosenSave())) this->play(std::move(*loaded));
+    else TraceLog(LOG_WARNING, "GAME: Couldn't read %s", menu.chosenSave().string().c_str());
+    break;
+  case ui::MainMenu::Action::StartGoban:
+    // From the beginning, every time.
+    if (this->game) this->game->goban.start(this->game->figure, this->game->zombie);
+    break;
+  case ui::MainMenu::Action::SaveAndQuit:
+    if (this->game) this->game->save();
+    this->game.reset();
     break;
   case ui::MainMenu::Action::SaveSettings:
     // Only now does anything the page changed take effect: updateSettings()
@@ -85,6 +129,27 @@ void App::handleMenu()
   case ui::MainMenu::Action::None:
     break;
   }
+}
+
+void App::updateZombie()
+{
+  // An action every ZOMBIE_STEP_SECONDS, the first one too, so the figure's last
+  // action can be seen before the zombie answers it. Held while paused.
+  if (!this->game || !this->game->goban.zombiesTurn()) {
+    this->zombieWait = 0.0f;
+    return;
+  }
+  if (this->gui.menu().current() != ui::MainMenu::Page::Goban) return;
+  this->zombieWait += GetFrameTime();
+  if (this->zombieWait < cfg::ZOMBIE_STEP_SECONDS) return;
+  this->zombieWait -= cfg::ZOMBIE_STEP_SECONDS;
+  this->game->goban.zombieAction();
+}
+
+void App::play(Game started)
+{
+  this->game = std::move(started);
+  this->gui.menu().play(*this->game);
 }
 
 void App::scale(Scale how)

@@ -53,6 +53,7 @@ public:
   agui::ButtonStyle backButton;          // back_button: grey, arrow pointing left
   agui::ButtonStyle redBackButton;       // the same in red_arrow_tileset: leaving, not going back
   agui::ButtonStyle forwardButton;       // green, arrow pointing right: the button that gets on with it
+  agui::ButtonStyle redForwardButton;    // red_confirm_button: the same in red, for deleting something
   agui::FrameStyle  menuFrame;           // frame, without the drag handle
   agui::FrameStyle  insideShallowFrame;  // inside_shallow_frame
   agui::FrameStyle  insideShallowFrameWithPadding;  // inside_shallow_frame_with_padding
@@ -114,6 +115,8 @@ public:
   // or white for a disabled button.
   std::unique_ptr<agui::Image> infoIcon() const;
   std::unique_ptr<agui::Image> resetIcon(bool enabled) const;
+  // The delete button's trash can (16 x 16), dark, for a red tool button.
+  std::unique_ptr<agui::Image> trashIcon() const;
   // The search button's magnifying glass, white.
   std::unique_ptr<agui::Image> searchIcon() const;
 
@@ -186,7 +189,7 @@ private:
   void themePanels();
 
   std::shared_ptr<Texture2D> atlas;
-  std::shared_ptr<Texture2D> info, reset, resetWhite, search;  // the utility sprites
+  std::shared_ptr<Texture2D> info, reset, resetWhite, trash, search;  // the utility sprites
   // Pieces the atlas doesn't have (the drop-down arrow), drawn at load time.
   std::shared_ptr<Texture2D> derived;
   std::vector<std::unique_ptr<agui_raylib::RaylibImage>> images;

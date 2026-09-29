@@ -1,11 +1,15 @@
-// The application: the window, the settings and the frame loop. Each frame
-// the keyboard shortcuts are read first, then the Gui runs, then whatever the
-// menu asked for is done, then everything is drawn.
+// The application: the window, the settings, the game being played and the
+// frame loop. Each frame the keyboard shortcuts are read first, then the Gui
+// runs, then whatever the menu asked for is done, then everything is drawn:
+// the game, and the Gui over it.
 
 #pragma once
 
 #include <app/Settings.hpp>
+#include <game/Game.hpp>
 #include <ui/GuiLayer.hpp>
+
+#include <optional>
 
 class App {
 public:
@@ -30,6 +34,10 @@ private:
   void frame();
   void handleKeys();
   void handleMenu();
+  // While it is the zombie's turn on the goban: its actions, one at a time.
+  void updateZombie();
+  // Starts playing `started`.
+  void play(Game started);
   void updateSettings();
   void scale(Scale how);
 
@@ -40,6 +48,11 @@ private:
 
   Window       window{ this->settings };
   ui::GuiLayer gui{ this->settings };
+
+  // The game being played, if any. Saved when the window closes mid-game,
+  // as Save and quit would.
+  std::optional<Game> game;
+  float zombieWait = 0.0f;  // seconds since the zombie's last step
 
   bool quitRequested = false;
 };

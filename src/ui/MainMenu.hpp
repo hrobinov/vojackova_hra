@@ -1,22 +1,37 @@
 // The main menu, as Factorio's: a column of big buttons in a window in the
 // middle of the screen, and the pages they open in its place.
 //
+// A game, started or loaded, opens on its own menu: for now only a Start
+// button, which opens the goban. Esc on the goban brings up a pause menu over
+// it with Back to menu, back to the game's menu; Esc on the game's menu, one
+// with Save and quit, back to the main menu. Esc again closes either.
+//
 // The menu says what the player chose through takeAction(); doing it is the
 // App's business.
 
 #pragma once
 
 #include <ui/AboutPage.hpp>
+#include <ui/DeleteGamePage.hpp>
+#include <ui/LoadGamePage.hpp>
+#include <ui/NewGamePage.hpp>
+#include <ui/PropertiesWindow.hpp>
 #include <ui/SettingsPage.hpp>
 
 #include <Agui/GenericTargetable.hpp>
+#include <Agui/Widget/EmptyWidget.hpp>
+#include <Agui/Widget/Frame.hpp>
 #include <Agui/Widget/Window.hpp>
+
+#include <filesystem>
+#include <string>
 
 struct Settings;
 
 namespace agui {
 class Gui;
-}
+class Label;
+}  // namespace agui
 
 namespace ui {
 
@@ -26,12 +41,16 @@ class MainMenu : public agui::GenericTargetable {
 public:
   enum class Action {
     None,
-    NewGame,
-    LoadGame,
+    NewGame,       // the New game page's Done: start a game called newGameName()
+    LoadGame,      // a save on the Load game page: load chosenSave()
     SaveSettings,  // Settings' Confirm: keep settings.draft()
+    SaveAndQuit,   // the game menu's pause menu: save the game, and back to the main menu
+    StartGoban,    // the game menu's Start: a new round on the goban
     Quit,
   };
-  enum class Page { Menu, Settings, About };
+  // Game is the game's menu, and Goban the goban, which has the screen to
+  // itself; each has a pause menu.
+  enum class Page { Menu, NewGame, LoadGame, DeleteGame, Settings, About, Game, GamePause, Goban, GobanPause };
 
   // Adds itself to `gui`. The Settings page starts its draft from `live`.
   MainMenu(agui::Gui& gui, Theme& theme, const ::Settings& live);
@@ -41,8 +60,23 @@ public:
 
   Page current() const { return this->page; }
 
+  // A game has started: the main menu makes way for its menu.
+  void play(const ::Game& game);
+
+  // Whether the goban is on the screen, paused or not.
+  bool gobanShown() const { return this->page == Page::Goban || this->page == Page::GobanPause; }
+
+  // Back from the goban to the game's menu, as the goban's pause menu's Back
+  // to menu does: when the figure dies.
+  void leaveGoban() { this->open(Page::Game); }
+
+  // The figure's lives, beside the goban. Cheap when they haven't changed.
+  // (The zombie's are the game's business, and not shown.)
+  void showLives(int lives);
+
   // Esc: closes the page's search if that is open, and otherwise is the
-  // page's Back button. Nothing on the menu itself.
+  // page's Back button. Nothing on the menu itself. While playing it brings
+  // up a pause menu, and takes it away again.
   void cancel();
   // Ctrl+F: the page's search, if it has one.
   void focusSearch();
@@ -53,15 +87,41 @@ public:
 
   Action takeAction();
 
+  // What NewGame's game is to be called.
+  std::string newGameName() const { return this->newGame.name(); }
+  // The save LoadGame is for.
+  const std::filesystem::path& chosenSave() const { return this->chosen; }
+
   SettingsPage settings;
 
 private:
   void open(Page page);
-  agui::Window& shown();
+  // What is in the middle of the screen; nothing while playing.
+  agui::Window* shown();
 
   agui::Gui&   gui;
   agui::Window window;
+  NewGamePage    newGame;
+  LoadGamePage   loadGame;
+  DeleteGamePage deleteGame;
   AboutPage    about;
+  // The game's menu; the sheet that darkens the screen behind a pause menu,
+  // and the pause menus, of the game's menu and of the goban.
+  agui::Window      game;
+  // In the game menu's bottom right corner: the basic properties of the
+  // figure, and over them the white zombie's.
+  PropertiesWindow  figure;
+  PropertiesWindow  zombie;
+  // Beside the goban: the figure's lives.
+  agui::Frame       lives;
+  agui::Label*      livesText  = nullptr;
+  int               livesShown = -1;
+  agui::EmptyWidget dimmer;
+  agui::Window      gamePause;
+  agui::Window      gobanPause;
+
+  std::filesystem::path chosen;
+  std::filesystem::path toDelete;  // the save the Delete game page asks about
 
   Page   page    = Page::Menu;
   Action pending = Action::None;

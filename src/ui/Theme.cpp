@@ -52,6 +52,8 @@ extern const unsigned char ICON_RESET_PNG[];
 extern const std::size_t   ICON_RESET_PNG_SIZE;
 extern const unsigned char ICON_RESET_WHITE_PNG[];
 extern const std::size_t   ICON_RESET_WHITE_PNG_SIZE;
+extern const unsigned char ICON_TRASH_PNG[];
+extern const std::size_t   ICON_TRASH_PNG_SIZE;
 extern const unsigned char ICON_SEARCH_PNG[];
 extern const std::size_t   ICON_SEARCH_PNG_SIZE;
 
@@ -438,7 +440,7 @@ std::unique_ptr<agui::Image> Theme::atlasImage(int x, int y, int w, int h) const
       this->atlas, ::Rectangle{ float(x), float(y), float(w), float(h) }, SPRITE_SCALE);
 }
 
-// utility-sprites.lua: info (16 x 40) and reset (32 x 32), both scale = 0.5.
+// utility-sprites.lua: info (16 x 40), reset and trash (32 x 32), all scale = 0.5.
 std::unique_ptr<agui::Image> Theme::infoIcon() const
 {
   return std::make_unique<agui_raylib::RaylibImage>(this->info, ::Rectangle{ 0, 0, 16, 40 }, SPRITE_SCALE);
@@ -448,6 +450,11 @@ std::unique_ptr<agui::Image> Theme::resetIcon(bool enabled) const
 {
   return std::make_unique<agui_raylib::RaylibImage>(enabled ? this->reset : this->resetWhite, ::Rectangle{ 0, 0, 32, 32 },
                                                     SPRITE_SCALE);
+}
+
+std::unique_ptr<agui::Image> Theme::trashIcon() const
+{
+  return std::make_unique<agui_raylib::RaylibImage>(this->trash, ::Rectangle{ 0, 0, 32, 32 }, SPRITE_SCALE);
 }
 
 // utility-sprites.lua: search, white, 32 x 32 at no scale -- the frame
@@ -472,6 +479,7 @@ Theme::Theme(float scale)
     , backButton(&agui::Button::defaultStyle)
     , redBackButton(&this->backButton)
     , forwardButton(&this->backButton)
+    , redForwardButton(&this->forwardButton)
     , menuFrame(&agui::Frame::defaultStyle)
     , insideShallowFrame(&agui::Frame::defaultStyle)
     , insideShallowFrameWithPadding(&this->insideShallowFrame)
@@ -526,6 +534,7 @@ Theme::Theme(float scale)
   this->info       = load(ICON_INFO_PNG, ICON_INFO_PNG_SIZE);
   this->reset      = load(ICON_RESET_PNG, ICON_RESET_PNG_SIZE);
   this->resetWhite = load(ICON_RESET_WHITE_PNG, ICON_RESET_WHITE_PNG_SIZE);
+  this->trash      = load(ICON_TRASH_PNG, ICON_TRASH_PNG_SIZE);
   this->search     = load(ICON_SEARCH_PNG, ICON_SEARCH_PNG_SIZE);
 
   // --- root defaults: every property a widget might read is set here ---
@@ -1311,6 +1320,17 @@ void Theme::themeMenus()
   this->forwardButton.setHorizontalAlign(agui::HorizontalAlign::Right);
   this->forwardButton.setLeftPadding(0);
   this->forwardButton.setRightPadding(16);  // clear of the arrow point
+
+  // red_confirm_button: arrow_forward(red_arrow_tileset), for a button that
+  // throws something away for good.
+  const agui::ElementImageSet redFwd         = Set(this->arrowForward(RED_ARROWS, 0), this->forwardButtonGlow(DIRT));
+  const agui::ElementImageSet redFwdHovered  = Set(this->arrowForward(RED_ARROWS, 2), {}, this->forwardButtonGlow(GLOW));
+  const agui::ElementImageSet redFwdClicked  = Set(this->arrowForward(RED_ARROWS, 3));
+  const agui::ElementImageSet redFwdDisabled = Set(this->arrowForward(RED_ARROWS, 1), {}, this->forwardButtonGlow(DIRT));
+  this->redForwardButton.setDefaultGraphicalSet(&redFwd);
+  this->redForwardButton.setHoveredGraphicalSet(&redFwdHovered);
+  this->redForwardButton.setClickedGraphicalSet(&redFwdClicked);
+  this->redForwardButton.setDisabledGraphicalSet(&redFwdDisabled);
 
   // draggable_space: the strip between a row of dialog buttons. As tall as the
   // buttons beside it, and as wide as the gap it is given.
