@@ -9,6 +9,8 @@
 
 #include <memory>
 
+struct Settings;
+
 namespace agui {
 class Gui;
 }
@@ -20,8 +22,8 @@ class Theme;
 
 class GuiLayer {
 public:
-  // Needs the window.
-  GuiLayer();
+  // Needs the window. The Settings page starts its draft from `settings`.
+  explicit GuiLayer(const Settings& settings);
   ~GuiLayer();
   GuiLayer(const GuiLayer&) = delete;
   GuiLayer& operator=(const GuiLayer&) = delete;
@@ -29,15 +31,20 @@ public:
   // Once per frame, before anything asks the menu what happened.
   void update();
 
+  // The interface scale, in percent: everything is laid out on a display that
+  // much smaller than the window and drawn that much bigger. Takes effect as a
+  // resize on the next update().
+  void setScale(int percent);
+
+  // How long the mouse rests on something before its tooltip shows, in
+  // milliseconds; negative for never. Shift shows them at once regardless.
+  void setTooltipDelay(int milliseconds);
+
   void draw();
 
   MainMenu& menu() { return *this->mainMenu; }
 
 private:
-  // The interface scale, in percent: everything is laid out on a display that
-  // much smaller than the window and drawn that much bigger.
-  void setScale(int percent);
-
   agui_raylib::RaylibFontLoader     fontLoader;
   agui_raylib::RaylibGraphics       graphics;
   agui_raylib::RaylibInput          input;
@@ -47,7 +54,6 @@ private:
   std::unique_ptr<agui::Gui> gui;
   std::unique_ptr<MainMenu>  mainMenu;
 
-  int scale        = 0;  // percent
   int screenWidth  = 0;  // what the Gui was last sized to, in GUI units
   int screenHeight = 0;
 };

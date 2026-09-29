@@ -1,34 +1,21 @@
 #include <ui/GuiLayer.hpp>
 
+#include <app/Settings.hpp>
 #include <ui/MainMenu.hpp>
 #include <ui/Theme.hpp>
 
 #include <Agui/Gui.hpp>
+#include <Agui/TopContainer.hpp>
+#include <Agui/Widget/ToolTip.hpp>
 #include <rlgl.h>
-
-#include <algorithm>
 
 namespace ui {
 
-namespace {
-
-// The interface scale for a window `width` x `height` pixels, as Factorio's
-// automatic UI scale works it out: in proportion to a 1920x1080 screen less
-// the window's frame, by whichever way it is tighter, rounded down to a step
-// of 25%. So 100% on full HD.
-int AutomaticInterfaceScale(int width, int height)
+GuiLayer::GuiLayer(const Settings& settings)
 {
-  constexpr int STEP = 25, MIN = 75, MAX = 200;
-  constexpr int FULL_HD_W = 1920 - 64, FULL_HD_H = 1080 - 64;
-  const int fit = std::min(width * 100 / FULL_HD_W, height * 100 / FULL_HD_H);
-  return std::clamp(fit / STEP * STEP, MIN, MAX);
-}
-
-}  // namespace
-
-GuiLayer::GuiLayer()
-{
-  const int percent = AutomaticInterfaceScale(GetScreenWidth(), GetScreenHeight());
+  // The scale the GUI will be drawn at, which the Theme rasterises its fonts
+  // for from the start rather than at 100% and then again.
+  const int percent = EffectiveInterfaceScale(settings.graphics, GetScreenWidth(), GetScreenHeight());
 
   // Theme loads fonts through Agui, so the loader has to be in place first.
   agui::Font::setFontLoader(&this->fontLoader);
@@ -40,9 +27,10 @@ GuiLayer::GuiLayer()
   this->gui->setCursorProvider(&this->cursor);
   this->gui->resizeToDisplay();
 
-  this->mainMenu = std::make_unique<MainMenu>(*this->gui, *this->theme);
+  this->mainMenu = std::make_unique<MainMenu>(*this->gui, *this->theme, settings);
 
   this->setScale(percent);
+  this->setTooltipDelay(settings.graphics.tooltipDelay);
 }
 
 GuiLayer::~GuiLayer()
@@ -54,30 +42,45 @@ GuiLayer::~GuiLayer()
 
 void GuiLayer::setScale(int percent)
 {
-  this->scale = percent;
-  const float factor = float(percent) / 100.0f;
-  this->graphics.setViewScale(factor);
-  this->input.setViewScale(factor);
-  this->theme->setScale(factor);
+  const float scale = float(percent) / 100.0f;
+  this->graphics.setViewScale(scale);
+  this->input.setViewScale(scale);
+  this->theme->setScale(scale);
+}
+
+void GuiLayer::setTooltipDelay(int milliseconds)
+{
+  // Agui's own "never" is -1 seconds.
+  this->gui->setGuiTooltipHoverInterval(milliseconds < 0 ? -1.0 : double(milliseconds) / 1000.0);
+  this->gui->resetGuiTooltipHoverTime();
 }
 
 void GuiLayer::update()
 {
-  // Not while minimized: Windows reports that as 0x0.
-  if (!IsWindowMinimized()) {
-    // The scale follows the window as it is resized.
-    if (const int percent = AutomaticInterfaceScale(GetScreenWidth(), GetScreenHeight()); percent != this->scale) {
-      this->setScale(percent);
-    }
-    // In GUI units, so a change of scale is a resize too.
-    const agui::Dimension display = this->graphics.getDisplaySize();
-    if (display.width != this->screenWidth || display.height != this->screenHeight) {
-      this->screenWidth  = display.width;
-      this->screenHeight = display.height;
-      this->gui->resizeToDisplay();
-    }
+  // Compared rather than asking IsWindowResized(): a resize made mid-frame, like
+  // toggling fullscreen from the settings page, is cleared by the next
+  // EndDrawing() before this ever sees it. In GUI units, so a change of scale
+  // is a resize too. Not while minimized: Windows reports that as 0x0, and
+  // laying out for it would recentre everything the player had dragged
+  // somewhere.
+  const agui::Dimension display = this->graphics.getDisplaySize();
+  if (!IsWindowMinimized() && (display.width != this->screenWidth || display.height != this->screenHeight)) {
+    this->screenWidth  = display.width;
+    this->screenHeight = display.height;
+    this->gui->resizeToDisplay();
   }
+  // Shift shows tooltips at once, whatever the delay -- even when it is
+  // "never". Agui takes back the ones it showed when Shift is let go of.
+  this->gui->setInstantTooltip(IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT));
   this->gui->logic(true);
+
+  // A tooltip is a window like any other, and would take the mouse when it
+  // moved onto one -- dropping the tooltip, which then comes back, over and
+  // over. The mouse goes through them to what is under them.
+  for (agui::Widget* child : this->gui->getTop()->getChildren()) {
+    if (dynamic_cast<agui::ToolTip*>(child) && !child->isIgnoredByInteraction()) child->setIgnoredByInteraction(true);
+  }
+
   this->mainMenu->layout(this->screenWidth, this->screenHeight);
 }
 

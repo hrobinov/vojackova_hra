@@ -16,9 +16,16 @@
 
 #include <functional>
 #include <string>
+#include <string_view>
 #include <utility>
 
 namespace ui {
+
+// Keys, as a tooltip names them: in Factorio's light blue, semibold.
+inline std::string ShortcutText(std::string_view keys)
+{
+  return "[font=default-semibold][color=128,206,240]" + std::string(keys) + "[/color][/font]";
+}
 
 // Every widget on a page is created with `new` and hold()-ed: it belongs to the
 // parent it is added to, and is deleted along with it.

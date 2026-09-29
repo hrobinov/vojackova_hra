@@ -7,9 +7,12 @@
 #pragma once
 
 #include <ui/AboutPage.hpp>
+#include <ui/SettingsPage.hpp>
 
 #include <Agui/GenericTargetable.hpp>
 #include <Agui/Widget/Window.hpp>
+
+struct Settings;
 
 namespace agui {
 class Gui;
@@ -21,16 +24,28 @@ class Theme;
 
 class MainMenu : public agui::GenericTargetable {
 public:
-  enum class Action { None, NewGame, LoadGame, Quit };
+  enum class Action {
+    None,
+    NewGame,
+    LoadGame,
+    SaveSettings,  // Settings' Confirm: keep settings.draft()
+    Quit,
+  };
+  enum class Page { Menu, Settings, About };
 
-  // Adds itself to `gui`.
-  MainMenu(agui::Gui& gui, Theme& theme);
+  // Adds itself to `gui`. The Settings page starts its draft from `live`.
+  MainMenu(agui::Gui& gui, Theme& theme, const ::Settings& live);
   ~MainMenu();
   MainMenu(const MainMenu&) = delete;
   MainMenu& operator=(const MainMenu&) = delete;
 
-  // Back from a page to the menu; nothing on the menu itself.
-  void back();
+  Page current() const { return this->page; }
+
+  // Esc: closes the page's search if that is open, and otherwise is the
+  // page's Back button. Nothing on the menu itself.
+  void cancel();
+  // Ctrl+F: the page's search, if it has one.
+  void focusSearch();
 
   // Keeps what is shown in the middle of the screen. Call after Gui::logic()
   // so sizes are current.
@@ -38,11 +53,11 @@ public:
 
   Action takeAction();
 
-private:
-  enum class Page { Menu, About };
+  SettingsPage settings;
 
+private:
   void open(Page page);
-  agui::Window& current();
+  agui::Window& shown();
 
   agui::Gui&   gui;
   agui::Window window;
