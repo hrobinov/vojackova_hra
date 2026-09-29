@@ -2,7 +2,7 @@
 
 Tady je hra, co zkouším dělat pomocí AI.
 
-Zatím je hotové jen hlavní menu: **Nová hra** a **Načíst hru** (ty ještě nic nedělají), **Nastavení** (velikost rozhraní a grafika, jako v Go editoru), **O hře** a **Konec**. Nastavení se ukládá do `%APPDATA%VojackovaHranfig.ini`.
+Zatím je hotové jen hlavní menu: **Nová hra** a **Načíst hru** (ty ještě nic nedělají), **Nastavení** (velikost rozhraní a grafika, jako v Go editoru), **O hře** a **Konec**. Nastavení se ukládá do `%APPDATA%\VojackovaHra\config.ini`.
 
 ## Z čeho je postavená
 
