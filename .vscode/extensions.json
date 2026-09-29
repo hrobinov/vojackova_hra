@@ -1,0 +1,5 @@
+{
+  // F5 debugs through the C/C++ extension's cppvsdbg; without it VS Code
+  // doesn't know the launch configurations in launch.json.
+  "recommendations": ["ms-vscode.cpptools"]
+}
