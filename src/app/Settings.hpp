@@ -43,8 +43,11 @@ struct Settings {
 
   // Not chosen on the settings page but remembered: how the window was left.
   struct Window {
-    int  width     = 1280;
-    int  height    = 720;
+    // To start with, the smallest window the automatic interface scale (see
+    // AutomaticInterfaceScale) puts at 100%: three quarters of a full HD
+    // screen less the window's frame.
+    int  width     = (1920 - 64) * 3 / 4;
+    int  height    = (1080 - 64) * 3 / 4;
     bool maximized = false;
   };
 
@@ -69,16 +72,18 @@ constexpr int ClampedInterfaceScale(int percent)
   return std::clamp(stepped, G::MIN_SCALE, G::MAX_SCALE);
 }
 
-// The interface scale for a window `width` x `height` pixels, worked out as
-// Factorio's automatic UI scale is: in proportion to a 1920x1080 screen less
-// the window's frame, by whichever way it is tighter, rounded down to a step.
-// So 100% on full HD. Within the range.
+// The interface scale for a window `width` x `height` pixels. Worked out as
+// Factorio's automatic UI scale is -- in proportion to a 1920x1080 screen
+// less the window's frame, by whichever way it is tighter, rounded down to a
+// step -- and then one step bigger: the game shows much less than Factorio
+// does, and has room to show it larger. So 125% on full HD. Within the range.
 constexpr int AutomaticInterfaceScale(int width, int height)
 {
   using G = Settings::Graphics;
   constexpr int FULL_HD_W = 1920 - 64, FULL_HD_H = 1080 - 64;
-  const int fit = std::min(width * 100 / FULL_HD_W, height * 100 / FULL_HD_H);
-  return std::clamp(fit / G::SCALE_STEP * G::SCALE_STEP, G::MIN_SCALE, G::MAX_SCALE);
+  const int fit     = std::min(width * 100 / FULL_HD_W, height * 100 / FULL_HD_H);
+  const int stepped = fit / G::SCALE_STEP * G::SCALE_STEP + G::SCALE_STEP;
+  return std::clamp(stepped, G::MIN_SCALE, G::MAX_SCALE);
 }
 
 // The scale the GUI is drawn at, for a window this size.
