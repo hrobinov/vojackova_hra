@@ -1,0 +1,43 @@
+#pragma once
+
+namespace agui
+{
+  enum ExtendedKeyEnum
+  {
+    EXT_KEY_NONE = 0,
+    EXT_KEY_ALT,
+    EXT_KEY_RIGHT_SHIFT,
+    EXT_KEY_LEFT_SHIFT,
+    EXT_KEY_RIGHT_CONTROL,
+    EXT_KEY_LEFT_CONTROL,
+    EXT_KEY_LEFT_META,
+    EXT_KEY_RIGHT_META,
+    EXT_KEY_HOME,
+    EXT_KEY_INSERT,
+    EXT_KEY_PAGE_UP,
+    EXT_KEY_PAGE_DOWN,
+    EXT_KEY_END,
+    EXT_KEY_CAPS_LOCK,
+    EXT_KEY_F1,
+    EXT_KEY_F2,
+    EXT_KEY_F3,
+    EXT_KEY_F4,
+    EXT_KEY_F5,
+    EXT_KEY_F6,
+    EXT_KEY_F7,
+    EXT_KEY_F8,
+    EXT_KEY_F9,
+    EXT_KEY_F10,
+    EXT_KEY_F11,
+    EXT_KEY_F12,
+    EXT_KEY_PRINT_SCREEN,
+    EXT_KEY_SCROLL_LOCK,
+    EXT_KEY_PAUSE,
+    EXT_KEY_NUM_LOCK,
+    EXT_KEY_ALTGR,
+    EXT_KEY_UP,
+    EXT_KEY_DOWN,
+    EXT_KEY_LEFT,
+    EXT_KEY_RIGHT
+  };
+}

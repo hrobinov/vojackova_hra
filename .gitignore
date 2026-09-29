@@ -1,0 +1,11 @@
+# Everything the build makes: objects, libraries, the exe, the sources
+# generated from resources/, and the Visual Studio project.
+/build/
+
+# FASTBuild's record of what it has built, which is this machine's alone.
+/fastbuild/*.fdb
+
+# The Visual Studio solution `fastbuild\build.cmd solution` writes, and what
+# Visual Studio keeps next to it.
+/VojackovaHra.sln
+/.vs/

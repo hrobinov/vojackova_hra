@@ -1,0 +1,42 @@
+{
+  "version": "2.0.0",
+  // The build tasks go through cmd so it can run fastbuild\build.cmd. That path
+  // needs its backslash: cmd reads anything after a "/" as a switch.
+  "tasks": [
+    {
+      "label": "build",
+      "type": "process",
+      "command": "cmd",
+      "args": ["/d", "/c", "fastbuild\\build.cmd", "Debug", "-noprogress"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "group": { "kind": "build", "isDefault": true },
+      "problemMatcher": "$msCompile"
+    },
+    {
+      "label": "build-release",
+      "type": "process",
+      "command": "cmd",
+      "args": ["/d", "/c", "fastbuild\\build.cmd", "Release", "-noprogress"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "group": "build",
+      "problemMatcher": "$msCompile"
+    },
+    {
+      "label": "rebuild",
+      "type": "process",
+      "command": "cmd",
+      "args": ["/d", "/c", "fastbuild\\build.cmd", "Debug", "-clean", "-noprogress"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "group": "build",
+      "problemMatcher": "$msCompile"
+    },
+    {
+      "label": "build-and-run",
+      "type": "process",
+      "command": "${workspaceFolder}/build/Debug/vojackova_hra.exe",
+      "options": { "cwd": "${workspaceFolder}" },
+      "dependsOn": "build",
+      "problemMatcher": []
+    }
+  ]
+}

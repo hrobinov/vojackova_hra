@@ -1,0 +1,10 @@
+root = true
+
+[*]
+indent_style = space
+indent_size = 2
+
+# Vendored code keeps its own style.
+[libraries/**]
+indent_style = unset
+indent_size = unset

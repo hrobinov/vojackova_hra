@@ -1,0 +1,293 @@
+// Vojáčková hra build, for FASTBuild. Run it through build.cmd, which finds the
+// compiler first:
+//   fastbuild\build.cmd Debug      Debug build
+//   fastbuild\build.cmd Release    Release build
+//   fastbuild\build.cmd            both (the default target, 'all')
+//   fastbuild\build.cmd solution   Visual Studio solution, VojackovaHra.sln
+//   add -clean to rebuild from scratch
+// The exe lands at build/<Config>/vojackova_hra.exe.
+//
+// The base -- Agui, raylib, the Factorio look in src/ui -- comes from
+// https://github.com/kovarex/kovarex_go_editor, and so does most of this file.
+
+//------------------------------------------------------------------------------
+// Toolchain. build.cmd finds the newest MSVC and Windows SDK with vswhere and
+// passes them in the variables a Visual Studio developer prompt sets, so from
+// one of those FBuild.exe can be run directly, from the repo root:
+//   fastbuild\FBuild.exe -config fastbuild\fbuild.bff Debug
+// Anywhere else, "Could not import environment variable" means use build.cmd.
+// Each ends in a backslash, as the developer prompt has them.
+//------------------------------------------------------------------------------
+#import VCToolsInstallDir
+#import WindowsSdkDir
+#import WindowsSDKVersion
+
+.VSBin = '$VCToolsInstallDir$bin\Hostx64\x64'
+.SDKInclude = '$WindowsSdkDir$Include\$WindowsSDKVersion$'
+.SDKLib     = '$WindowsSdkDir$Lib\$WindowsSDKVersion$'
+
+#import TMP
+#import SystemRoot
+
+// What vcvars would set up: FASTBuild runs every tool in this environment
+// rather than the calling shell's, so the build works from any prompt.
+Settings
+{
+  .Environment =
+  {
+    'PATH=$VSBin$;$SystemRoot$\System32'
+    'TMP=$TMP$'
+    'SystemRoot=$SystemRoot$'
+    'INCLUDE=$VCToolsInstallDir$include;$SDKInclude$ucrt;$SDKInclude$um;$SDKInclude$shared'
+    'LIB=$VCToolsInstallDir$lib\x64;$SDKLib$ucrt\x64;$SDKLib$um\x64'
+  }
+}
+
+Compiler( 'MSVC' )
+{
+  .Executable = '$VSBin$\cl.exe'
+}
+
+.Compiler          = 'MSVC'
+.Librarian         = '$VSBin$\lib.exe'
+.LibrarianOptions  = '/NOLOGO /MACHINE:X64 /OUT:"%2" "%1"'
+.Linker            = '$VSBin$\link.exe'
+
+// /Z7 keeps debug info in each .obj, so files compile in parallel without
+// fighting over a shared .pdb; the linker still writes one .pdb.
+//
+// /Gy and /Gw put each function and each piece of global data in its own COMDAT,
+// which is what lets the linker's /OPT:REF throw away the ones nothing calls.
+.BaseCompilerOptions = '"%1" /Fo"%2" /c /nologo /Z7 /Gy /Gw /utf-8 /DWIN32 /D_WINDOWS /external:env:INCLUDE /external:W0'
+// /std:c++latest rather than /std:c++20: Visual Studio 2019 before 16.11
+// doesn't know /std:c++20, ignores it with a warning, and compiles as C++14.
+.CppOptions          = ' /std:c++latest /EHsc /GR /permissive-'
+
+// Link the C/C++ runtime statically (into raylib and Agui too, so everything
+// agrees), so the exe runs on a machine without the Visual C++
+// Redistributable -- or, for a Debug build, without Visual Studio.
+.Debug =
+[
+    .Config        = 'Debug'
+    .ConfigOptions = ' /Od /Ob0 /RTC1 /MTd /D_DEBUG'
+                   // Agui keeps extra debug bookkeeping in its classes under
+                   // DEBUG, so every user of its headers has to agree on it.
+                   + ' /DDEBUG'
+    .ConfigLinkerOptions = ''
+    // A console, for raylib's log.
+    .Subsystem     = ' /SUBSYSTEM:CONSOLE'
+]
+.Release =
+[
+    .Config        = 'Release'
+    .ConfigOptions = ' /O2 /MT /DNDEBUG /GL'
+    .ConfigLinkerOptions = ' /OPT:REF /OPT:ICF /LTCG'
+    // A window and no console. main() is still the entry point.
+    .Subsystem     = ' /SUBSYSTEM:WINDOWS /ENTRY:mainCRTStartup'
+]
+
+//------------------------------------------------------------------------------
+// What resources/ holds -- the GUI atlas, the typeface, the icons -- is
+// compiled into the exe, so the exe is all there is to ship. tools/Embed.cpp
+// turns each file into a .cpp of bytes in build\generated.
+//------------------------------------------------------------------------------
+ObjectList( 'Embed-Obj' )
+{
+  .CompilerOptions    = .BaseCompilerOptions + .CppOptions + ' /O2 /MT /W4'
+  .CompilerInputFiles = { 'tools\Embed.cpp' }
+  .CompilerOutputPath = 'build\tools\'
+}
+Executable( 'Embed' )
+{
+  .Libraries     = { 'Embed-Obj' }
+  .LinkerOutput  = 'build\tools\Embed.exe'
+  .LinkerOptions = '/NOLOGO /MACHINE:X64 /SUBSYSTEM:CONSOLE /OUT:"%2" "%1"'
+}
+
+// resources\gui.png is Factorio's gui-new.png; see src/ui/Theme.hpp.
+Exec( 'GuiAtlas' )
+{
+  .ExecExecutable = 'build\tools\Embed.exe'
+  .ExecInput      = 'resources\gui.png'
+  .ExecOutput     = 'build\generated\GuiAtlas.cpp'
+  .ExecArguments  = '"%1" "%2" GUI_ATLAS_PNG ui'
+}
+
+// The typeface too: Titillium Web, the one Factorio's GUI is set in (SIL Open
+// Font License, resources/fonts/OFL.txt). See ui/Fonts.cpp.
+Exec( 'FontRegular' )
+{
+  .ExecExecutable = 'build\tools\Embed.exe'
+  .ExecInput      = 'resources\fonts\TitilliumWeb-Regular.ttf'
+  .ExecOutput     = 'build\generated\FontRegular.cpp'
+  .ExecArguments  = '"%1" "%2" FONT_REGULAR_TTF ui'
+}
+Exec( 'FontSemiBold' )
+{
+  .ExecExecutable = 'build\tools\Embed.exe'
+  .ExecInput      = 'resources\fonts\TitilliumWeb-SemiBold.ttf'
+  .ExecOutput     = 'build\generated\FontSemiBold.cpp'
+  .ExecArguments  = '"%1" "%2" FONT_SEMIBOLD_TTF ui'
+}
+Exec( 'FontBold' )
+{
+  .ExecExecutable = 'build\tools\Embed.exe'
+  .ExecInput      = 'resources\fonts\TitilliumWeb-Bold.ttf'
+  .ExecOutput     = 'build\generated\FontBold.cpp'
+  .ExecArguments  = '"%1" "%2" FONT_BOLD_TTF ui'
+}
+
+// Icons of Factorio's own (its utility sprites, from data/core/graphics/icons/mip):
+// the info mark after a name with a tooltip, the reset button's arrow, and the
+// search button's magnifying glass (data/core/graphics/icons/search.png).
+Exec( 'IconInfo' )
+{
+  .ExecExecutable = 'build\tools\Embed.exe'
+  .ExecInput      = 'resources\icons\info-blue.png'
+  .ExecOutput     = 'build\generated\IconInfo.cpp'
+  .ExecArguments  = '"%1" "%2" ICON_INFO_PNG ui'
+}
+Exec( 'IconReset' )
+{
+  .ExecExecutable = 'build\tools\Embed.exe'
+  .ExecInput      = 'resources\icons\reset.png'
+  .ExecOutput     = 'build\generated\IconReset.cpp'
+  .ExecArguments  = '"%1" "%2" ICON_RESET_PNG ui'
+}
+Exec( 'IconResetWhite' )
+{
+  .ExecExecutable = 'build\tools\Embed.exe'
+  .ExecInput      = 'resources\icons\reset-white.png'
+  .ExecOutput     = 'build\generated\IconResetWhite.cpp'
+  .ExecArguments  = '"%1" "%2" ICON_RESET_WHITE_PNG ui'
+}
+Exec( 'IconSearch' )
+{
+  .ExecExecutable = 'build\tools\Embed.exe'
+  .ExecInput      = 'resources\icons\search-white.png'
+  .ExecOutput     = 'build\generated\IconSearch.cpp'
+  .ExecArguments  = '"%1" "%2" ICON_SEARCH_PNG ui'
+}
+
+// Agui is a pile of small files that rarely change: compile it as a few
+// unity blobs instead of ~100 separate translation units.
+Unity( 'Agui-Unity' )
+{
+  .UnityInputPath  = 'libraries\Agui\'
+  .UnityOutputPath = 'build\unity\agui\'
+  .UnityNumFiles   = 8
+}
+
+//------------------------------------------------------------------------------
+// Per-config targets.
+//------------------------------------------------------------------------------
+.Configs = { .Debug, .Release }
+ForEach( .Cfg in .Configs )
+{
+  Using( .Cfg )
+  .Out = 'build\$Config$'
+
+  // raylib 5.5, vendored in libraries/raylib (desktop GLFW / OpenGL 3.3).
+  .RaylibDefines = ' /DPLATFORM_DESKTOP /DGRAPHICS_API_OPENGL_33 /D_CRT_SECURE_NO_WARNINGS'
+  Library( 'raylib-$Config$' )
+  {
+    .CompilerOptions    = .BaseCompilerOptions + .ConfigOptions + .RaylibDefines
+                        + ' /W0 /I"libraries\raylib" /I"libraries\raylib\external\glfw\include"'
+    .CompilerInputPath  = 'libraries\raylib\'
+    .CompilerInputPathRecurse = false
+    .CompilerInputPattern = '*.c'
+    .CompilerOutputPath = '$Out$\obj\raylib\'
+    .LibrarianOutput    = '$Out$\lib\raylib.lib'
+  }
+
+  // Agui: vendored GUI library, included as <Agui/...>. It has no backend of
+  // its own; the game supplies a raylib one in src/ui.
+  .AguiDefines = ' /DNOMINMAX /D_CRT_SECURE_NO_WARNINGS'
+  Library( 'agui-$Config$' )
+  {
+    .CompilerOptions    = .BaseCompilerOptions + .CppOptions + .ConfigOptions + .AguiDefines
+                        + ' /W0 /bigobj /I"libraries"'
+                        // The STL raises its own headers back to /W3, so /W0 alone
+                        // doesn't hide Agui's double->float emplace_back in Graph.cpp.
+                        + ' /wd4244'
+    .CompilerInputUnity = { 'Agui-Unity' }
+    .CompilerOutputPath = '$Out$\obj\agui\'
+    .LibrarianOutput    = '$Out$\lib\agui.lib'
+  }
+
+  // The game. It sees GLFW's header as well as raylib's: ui/AguiRaylib.cpp
+  // makes the text cursor through it.
+  ObjectList( 'game-obj-$Config$' )
+  {
+    .CompilerOptions    = .BaseCompilerOptions + .CppOptions + .ConfigOptions + .RaylibDefines + .AguiDefines
+                        + ' /W4 /I"src" /external:I"libraries" /external:I"libraries\raylib"'
+                        + ' /external:I"libraries\raylib\external\glfw\include"'
+    .CompilerInputPath  = 'src\'
+    .CompilerInputPattern = '*.cpp'
+    .CompilerInputFiles = { 'build\generated\GuiAtlas.cpp', 'build\generated\FontRegular.cpp',
+                            'build\generated\FontSemiBold.cpp', 'build\generated\FontBold.cpp',
+                            'build\generated\IconInfo.cpp', 'build\generated\IconReset.cpp',
+                            'build\generated\IconResetWhite.cpp', 'build\generated\IconSearch.cpp' }
+    .CompilerOutputPath = '$Out$\obj\game\'
+    .PreBuildDependencies = { 'GuiAtlas', 'FontRegular', 'FontSemiBold', 'FontBold',
+                              'IconInfo', 'IconReset', 'IconResetWhite', 'IconSearch' }
+  }
+
+  Executable( 'game-$Config$' )
+  {
+    .Libraries     = { 'game-obj-$Config$', 'raylib-$Config$', 'agui-$Config$' }
+    .LinkerOutput  = '$Out$\vojackova_hra.exe'
+    .LinkerOptions = '/NOLOGO /MACHINE:X64 /DEBUG /INCREMENTAL:NO /OUT:"%2" "%1"'
+                   + .Subsystem
+                   + .ConfigLinkerOptions
+                   + ' opengl32.lib gdi32.lib winmm.lib user32.lib shell32.lib kernel32.lib'
+  }
+
+  Alias( '$Config$' ) { .Targets = { 'game-$Config$' } }
+}
+
+Alias( 'all' ) { .Targets = { 'Debug', 'Release' } }
+
+//------------------------------------------------------------------------------
+// Visual Studio solution, for opening the project in the IDE:
+//   fastbuild\build.cmd solution
+// writes VojackovaHra.sln at the repo root (with its project in build\vs\).
+// It's a Makefile project: Build and Rebuild in VS run build.cmd, so FASTBuild
+// still does the building, and F5 starts vojackova_hra.exe under the debugger.
+//------------------------------------------------------------------------------
+.VSConfigs = {}
+ForEach( .Cfg in .Configs )
+{
+  Using( .Cfg )
+  .VSConfig =
+  [
+    .Platform              = 'x64'
+    .Config                = '$Config$'
+    .Target                = 'game-$Config$'
+    .PlatformToolset       = 'v142'
+    .ProjectBuildCommand   = '"^$(SolutionDir)fastbuild\build.cmd" -ide $Config$'
+    .ProjectRebuildCommand = '"^$(SolutionDir)fastbuild\build.cmd" -ide -clean $Config$'
+    .LocalDebuggerWorkingDirectory = '^$(SolutionDir)'
+    .AdditionalOptions     = '/std:c++latest'
+  ]
+  ^VSConfigs + .VSConfig
+}
+
+VCXProject( 'game-proj' )
+{
+  .ProjectOutput     = 'build\vs\vojackova_hra.vcxproj'
+  .ProjectInputPaths = { 'src\', 'tools\' }
+  .ProjectFiles      = { 'fastbuild\fbuild.bff', 'fastbuild\build.cmd' }
+  .ProjectBasePath   = { 'src\', '.\' }
+  .ProjectConfigs    = .VSConfigs
+}
+
+VSSolution( 'solution' )
+{
+  .SolutionOutput       = 'VojackovaHra.sln'
+  .SolutionProjects     = { 'game-proj' }
+  .SolutionBuildProject = 'game-proj'
+  .SolutionConfigs      = .VSConfigs
+  .SolutionVisualStudioVersion        = '16.0.28701.123'
+  .SolutionMinimumVisualStudioVersion = '10.0.40219.1'
+}
