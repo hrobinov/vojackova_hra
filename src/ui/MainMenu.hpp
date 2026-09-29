@@ -16,6 +16,7 @@
 #include <ui/LoadGamePage.hpp>
 #include <ui/NewGamePage.hpp>
 #include <ui/PropertiesWindow.hpp>
+#include <ui/UpgradeWindow.hpp>
 #include <ui/SettingsPage.hpp>
 
 #include <Agui/GenericTargetable.hpp>
@@ -24,13 +25,16 @@
 #include <Agui/Widget/Window.hpp>
 
 #include <filesystem>
+#include <memory>
 #include <string>
+#include <vector>
 
 struct Settings;
 
 namespace agui {
 class Gui;
 class Label;
+class TextField;
 }  // namespace agui
 
 namespace ui {
@@ -46,6 +50,9 @@ public:
     SaveSettings,  // Settings' Confirm: keep settings.draft()
     SaveAndQuit,   // the game menu's pause menu: save the game, and back to the main menu
     StartGoban,    // the game menu's Start: a new round on the goban
+    LeaveGoban,    // the goban's pause menu: back to the game's menu, the round's earnings banked
+    BuyUpgrade,    // an upgrade in the shop: buy UPGRADES[boughtUpgrade()]
+    EnterPassword, // the secret password's field confirmed: try password()
     Quit,
   };
   // Game is the game's menu, and Goban the goban, which has the screen to
@@ -63,6 +70,10 @@ public:
   // A game has started: the main menu makes way for its menu.
   void play(const ::Game& game);
 
+  // Brings the game's menu in line with `game`: the properties, the money,
+  // and what of the shop there is money for.
+  void showGame(const ::Game& game);
+
   // Whether the goban is on the screen, paused or not.
   bool gobanShown() const { return this->page == Page::Goban || this->page == Page::GobanPause; }
 
@@ -70,9 +81,12 @@ public:
   // to menu does: when the figure dies.
   void leaveGoban() { this->open(Page::Game); }
 
-  // The figure's lives, beside the goban. Cheap when they haven't changed.
-  // (The zombie's are the game's business, and not shown.)
-  void showLives(int lives);
+  // The figure's lives and the round's earnings, beside the goban. Cheap
+  // when they haven't changed. (The zombies' lives are the game's business,
+  // and not shown.)
+  void showRound(int lives, int earnings);
+
+
 
   // Esc: closes the page's search if that is open, and otherwise is the
   // page's Back button. Nothing on the menu itself. While playing it brings
@@ -89,6 +103,11 @@ public:
 
   // What NewGame's game is to be called.
   std::string newGameName() const { return this->newGame.name(); }
+  // The upgrade BuyUpgrade is for, an index into UPGRADES.
+  size_t boughtUpgrade() const { return this->bought; }
+  // What EnterPassword is for; and the field emptied again after.
+  std::string password() const;
+  void        clearPassword();
   // The save LoadGame is for.
   const std::filesystem::path& chosenSave() const { return this->chosen; }
 
@@ -112,10 +131,20 @@ private:
   // figure, and over them the white zombie's.
   PropertiesWindow  figure;
   PropertiesWindow  zombie;
-  // Beside the goban: the figure's lives.
-  agui::Frame       lives;
-  agui::Label*      livesText  = nullptr;
-  int               livesShown = -1;
+  // Beside the goban: the figure's lives, and the round's earnings.
+  agui::Frame       round;
+  agui::Label*      livesText     = nullptr;
+  agui::Label*      earningsText  = nullptr;
+  int               livesShown    = -1;
+  int               earningsShown = -1;
+  // In the game's menu, over the properties: the game's money.
+  agui::Window      money;
+  agui::Label*      moneyText = nullptr;
+  // In the game's menu, from the top left along the top: the shop, an
+  // upgrade a window. And over Start, the secret password.
+  std::vector<std::unique_ptr<UpgradeWindow>> shop;
+  size_t            bought = 0;
+  agui::TextField*  passwordField = nullptr;
   agui::EmptyWidget dimmer;
   agui::Window      gamePause;
   agui::Window      gobanPause;

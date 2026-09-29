@@ -6,6 +6,7 @@
 #include <raylib.h>
 
 #include <algorithm>
+#include <string>
 
 BoardLayout LayOutBoard(int screenWidth, int screenHeight)
 {
@@ -36,11 +37,16 @@ void DrawBoard(const Goban& goban, int screenWidth, int screenHeight)
 
   // The figure and the zombies, each in the middle of its square (inside the
   // lines round it).
-  const float middle = (float(square) + float(line)) / 2.0f;
-  const auto  dot    = [&](Position at, Color color) {
-    DrawCircleV(Vector2{ float(left + at.x * square) + middle, float(top + at.y * square) + middle },
-                float(square) * cfg::DOT_SIZE / 2.0f, color);
+  // A small number in each says how many lives it has left.
+  const float middle   = (float(square) + float(line)) / 2.0f;
+  const int   fontSize = std::max(8, int(float(square) * cfg::LIVES_TEXT_SIZE));
+  const auto  dot      = [&](Position at, Color color, int lives, Color textColor) {
+    const Vector2 centre{ float(left + at.x * square) + middle, float(top + at.y * square) + middle };
+    DrawCircleV(centre, float(square) * cfg::DOT_SIZE / 2.0f, color);
+    const std::string text = std::to_string(lives);
+    DrawText(text.c_str(), int(centre.x) - MeasureText(text.c_str(), fontSize) / 2, int(centre.y) - fontSize / 2, fontSize,
+             textColor);
   };
-  for (const Goban::Zombie& zombie : goban.zombies()) dot(zombie.at, cfg::ZOMBIE_COLOR);
-  dot(goban.figureAt(), cfg::DOT_COLOR);
+  for (const Goban::Zombie& zombie : goban.zombies()) dot(zombie.at, cfg::ZOMBIE_COLOR, zombie.lives, cfg::ZOMBIE_TEXT_COLOR);
+  dot(goban.figureAt(), cfg::DOT_COLOR, goban.figureLives(), cfg::DOT_TEXT_COLOR);
 }

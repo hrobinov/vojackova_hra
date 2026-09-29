@@ -27,8 +27,15 @@ constexpr Color CENTRE_COLOR = Color{ 200, 30, 30, 255 };
 constexpr Color DOT_COLOR    = Color{ 40, 120, 255, 255 };
 constexpr Color ZOMBIE_COLOR = Color{ 255, 255, 255, 255 };
 constexpr float DOT_SIZE     = 0.6f;
+// The number of lives in each dot: how tall, as a share of a square, and in
+// what colour on each.
+constexpr float LIVES_TEXT_SIZE   = 0.4f;
+constexpr Color DOT_TEXT_COLOR    = Color{ 255, 255, 255, 255 };
+constexpr Color ZOMBIE_TEXT_COLOR = Color{ 0, 0, 0, 255 };
 // How long each of the zombie's actions takes, so they can be followed.
 constexpr float ZOMBIE_STEP_SECONDS = 0.3f;
+// How long the goban stays after the figure dies, before the game's menu.
+constexpr float DEATH_SECONDS = 1.0f;
 // The gap left round the board, as a share of the window's shorter side.
 constexpr float BOARD_MARGIN = 0.05f;
 

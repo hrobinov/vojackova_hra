@@ -9,14 +9,17 @@
 #include <Agui/Gui.hpp>
 #include <Agui/Widget/Button.hpp>
 #include <Agui/Widget/Label.hpp>
+#include <Agui/Widget/TextField.hpp>
 
 namespace ui {
 
 namespace {
 
-// How far the basic properties' windows and the lives are from the corner,
-// and the windows apart.
+// How far the game menu's windows and the round's lives and earnings are
+// from the corner, and the windows apart.
 constexpr int CORNER_GAP = 16;
+// How wide the secret password's field is.
+constexpr int PASSWORD_W = 140;
 
 }  // namespace
 
@@ -53,7 +56,8 @@ MainMenu::MainMenu(agui::Gui& gui, Theme& theme, const ::Settings& live)
     , game(agui::GuiDirection::Vertical, &theme.menuFrame, agui::Window::HeightRule::MaxScreenHeightWithExtraSpace)
     , figure(theme, "Základní vlastnosti panáčka")
     , zombie(theme, "Základní vlastnosti bílého zombíka")
-    , lives(agui::GuiDirection::Vertical, &theme.insideShallowFrameWithPadding)
+    , round(agui::GuiDirection::Vertical, &theme.insideShallowFrameWithPadding)
+    , money(agui::GuiDirection::Vertical, "Peníze")
     , gamePause(agui::GuiDirection::Vertical, &theme.menuFrame, agui::Window::HeightRule::MaxScreenHeightWithExtraSpace)
     , gobanPause(agui::GuiDirection::Vertical, &theme.menuFrame, agui::Window::HeightRule::MaxScreenHeightWithExtraSpace)
 {
@@ -74,8 +78,16 @@ MainMenu::MainMenu(agui::Gui& gui, Theme& theme, const ::Settings& live)
   buttons << agui::button("Konec", &this->window, [this] { this->pending = Action::Quit; }, &theme.menuButton);
   this->window << buttons;
 
-  // The game's menu. More is to come on it; so far only Start.
+  // The game's menu: the secret password, and Start.
+  const auto submitPassword = [this] { this->pending = Action::EnterPassword; };
+  this->passwordField = &make<agui::TextField>();
+  this->passwordField->style.setMinimalWidth(PASSWORD_W);
+  this->passwordField->style.setMaximalWidth(PASSWORD_W);
+  this->passwordField->onConfirm(this, submitPassword);
+  agui::HorizontalFlow& secret = row(8);
+  secret << agui::label("Tajné heslo:") << *this->passwordField << agui::button("OK", &this->game, submitPassword);
   agui::VerticalFlow& gameButtons = column(8);
+  gameButtons << secret;
   gameButtons << agui::button("Start", &this->game, [this] {
     this->pending = Action::StartGoban;
     this->open(Page::Goban);
@@ -90,11 +102,29 @@ MainMenu::MainMenu(agui::Gui& gui, Theme& theme, const ::Settings& live)
   this->gamePause << gamePauseButtons;
 
   agui::VerticalFlow& gobanPauseButtons = column(8);
-  gobanPauseButtons << agui::button("Zpět do menu", &this->gobanPause, [this] { this->open(Page::Game); }, &theme.menuButton);
+  gobanPauseButtons << agui::button("Zpět do menu", &this->gobanPause, [this] {
+    this->pending = Action::LeaveGoban;
+    this->open(Page::Game);
+  }, &theme.menuButton);
   this->gobanPause << gobanPauseButtons;
 
-  this->livesText = &agui::label("", &theme.headingLabel);
-  this->lives << *this->livesText;
+  this->livesText    = &agui::label("", &theme.headingLabel);
+  this->earningsText = &agui::label("");
+  this->round << *this->livesText << *this->earningsText;
+
+  // As wide as the properties under it.
+  agui::Frame& moneyPanel = make<agui::Frame>(agui::GuiDirection::Vertical, &theme.insideShallowFrameWithPadding);
+  moneyPanel.style.setMinimalWidth(PropertiesWindow::PANEL_W);
+  this->moneyText = &agui::label("", &theme.headingLabel);
+  moneyPanel << *this->moneyText;
+  this->money << moneyPanel;
+
+  for (size_t i = 0; i < std::size(UPGRADES); ++i) {
+    this->shop.push_back(std::make_unique<UpgradeWindow>(theme, UPGRADES[i], [this, i] {
+      this->bought  = i;
+      this->pending = Action::BuyUpgrade;
+    }));
+  }
 
   this->dimmer.style.setParent(&theme.dimmer);
 
@@ -107,7 +137,9 @@ MainMenu::MainMenu(agui::Gui& gui, Theme& theme, const ::Settings& live)
   gui.add(&this->game);
   gui.add(&this->figure);
   gui.add(&this->zombie);
-  gui.add(&this->lives);
+  gui.add(&this->money);
+  for (const auto& upgrade : this->shop) gui.add(upgrade.get());
+  gui.add(&this->round);
   gui.add(&this->dimmer);  // before the pause menus, so they aren't dimmed too
   gui.add(&this->gamePause);
   gui.add(&this->gobanPause);
@@ -119,7 +151,9 @@ MainMenu::~MainMenu()
   this->gui.remove(&this->gobanPause);
   this->gui.remove(&this->gamePause);
   this->gui.remove(&this->dimmer);
-  this->gui.remove(&this->lives);
+  this->gui.remove(&this->round);
+  for (const auto& upgrade : this->shop) this->gui.remove(upgrade.get());
+  this->gui.remove(&this->money);
   this->gui.remove(&this->zombie);
   this->gui.remove(&this->figure);
   this->gui.remove(&this->game);
@@ -134,17 +168,41 @@ MainMenu::~MainMenu()
 void MainMenu::play(const ::Game& played)
 {
   for (agui::Window* titled : { &this->game, &this->gamePause, &this->gobanPause }) titled->title.setText(std::string(played.name));
-  this->figure.show(played.figure);
-  this->zombie.show(played.zombie);
+  this->clearPassword();
+  this->showGame(played);
   this->open(Page::Game);
 }
 
-void MainMenu::showLives(int count)
+void MainMenu::showGame(const ::Game& shown)
 {
-  if (count == this->livesShown) return;
-  this->livesShown = count;
-  this->livesText->setText(std::to_string(count) + " HP");
+  this->figure.show(shown.figure);
+  this->zombie.show(shown.zombie);
+  this->moneyText->setText(std::to_string(shown.money) + " Kč");
+  for (size_t i = 0; i < this->shop.size(); ++i) this->shop[i]->show(shown.price(i), shown.money);
 }
+
+std::string MainMenu::password() const
+{
+  return this->passwordField->getText();
+}
+
+void MainMenu::clearPassword()
+{
+  this->passwordField->setText(std::string());
+}
+
+void MainMenu::showRound(int lives, int earnings)
+{
+  if (lives != this->livesShown) {
+    this->livesShown = lives;
+    this->livesText->setText(std::to_string(lives) + " HP");
+  }
+  if (earnings != this->earningsShown) {
+    this->earningsShown = earnings;
+    this->earningsText->setText("Výdělek: " + std::to_string(earnings) + " Kč");
+  }
+}
+
 
 void MainMenu::open(Page p)
 {
@@ -160,7 +218,9 @@ void MainMenu::open(Page p)
   this->game.setVisible(p == Page::Game || p == Page::GamePause);
   this->figure.setVisible(p == Page::Game || p == Page::GamePause);
   this->zombie.setVisible(p == Page::Game || p == Page::GamePause);
-  this->lives.setVisible(p == Page::Goban || p == Page::GobanPause);
+  this->money.setVisible(p == Page::Game || p == Page::GamePause);
+  for (const auto& upgrade : this->shop) upgrade->setVisible(p == Page::Game || p == Page::GamePause);
+  this->round.setVisible(p == Page::Goban || p == Page::GobanPause);
   this->dimmer.setVisible(p == Page::GamePause || p == Page::GobanPause);
   this->gamePause.setVisible(p == Page::GamePause);
   this->gobanPause.setVisible(p == Page::GobanPause);
@@ -222,28 +282,37 @@ void MainMenu::layout(int screenWidth, int screenHeight)
   this->dimmer.setLocation(0, 0);
   this->dimmer.setSize(screenWidth, screenHeight, agui::SetSizeInfo());
 
-  // The properties in the bottom right corner, a little way in: the
-  // figure's, and the zombie's over them.
+  // Up from the bottom right corner, a little way in: the figure's
+  // properties, the zombie's over them, and the money over those.
   if (this->figure.isVisible()) {
-    const int figureTop = screenHeight - this->figure.getHeight() - CORNER_GAP;
-    this->figure.setLocation(screenWidth - this->figure.getWidth() - CORNER_GAP, figureTop);
-    this->zombie.setLocation(screenWidth - this->zombie.getWidth() - CORNER_GAP,
-                             figureTop - this->zombie.getHeight() - CORNER_GAP);
+    int top = screenHeight;
+    for (agui::Window* stacked : { static_cast<agui::Window*>(&this->figure), static_cast<agui::Window*>(&this->zombie),
+                                  &this->money }) {
+      top -= stacked->getHeight() + CORNER_GAP;
+      stacked->setLocation(screenWidth - stacked->getWidth() - CORNER_GAP, top);
+    }
   }
 
-  // The lives in the gap right of the goban: across, half way between it and
-  // the edge of the screen, and level with its top. The goban is laid out on
-  // the screen in pixels, this in GUI units, but it is in proportion to the
-  // screen, so it lands in the same place near enough. Where the gap is too
-  // narrow, in the corner.
-  if (this->lives.isVisible()) {
+  // The shop from the top left corner along the top, a little way in.
+  int shopLeft = CORNER_GAP;
+  for (const auto& upgrade : this->shop) {
+    upgrade->setLocation(shopLeft, CORNER_GAP);
+    shopLeft += upgrade->getWidth() + CORNER_GAP;
+  }
+
+  // The lives and earnings in the gap right of the goban: across, half way
+  // between it and the edge of the screen, and level with its top. The goban
+  // is laid out on the screen in pixels, this in GUI units, but it is in
+  // proportion to the screen, so it lands in the same place near enough.
+  // Where the gap is too narrow, in the corner.
+  if (this->round.isVisible()) {
     const BoardLayout goban = LayOutBoard(screenWidth, screenHeight);
     const int gapLeft = goban.left + goban.side;
     const int gap     = screenWidth - gapLeft;
-    if (gap >= this->lives.getWidth() + 2 * CORNER_GAP) {
-      this->lives.setLocation(gapLeft + (gap - this->lives.getWidth()) / 2, goban.top);
+    if (gap >= this->round.getWidth() + 2 * CORNER_GAP) {
+      this->round.setLocation(gapLeft + (gap - this->round.getWidth()) / 2, goban.top);
     } else {
-      this->lives.setLocation(screenWidth - this->lives.getWidth() - CORNER_GAP, CORNER_GAP);
+      this->round.setLocation(screenWidth - this->round.getWidth() - CORNER_GAP, CORNER_GAP);
     }
   }
 

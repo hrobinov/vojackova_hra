@@ -3,20 +3,24 @@
 //
 // It is played in turns. First the figure: each of its actions is a step, a
 // square left, right, up or down, onto a free square of the goban; a shot of
-// its pistol at a zombie up to PISTOL_RANGE squares away in a straight line,
-// taking as many of its lives as the figure wounds; or waiting, doing
-// nothing. Then the zombies, all of them an action at a time: each action a
-// step towards the figure, or once beside it, an attack that takes as many of
-// the figure's lives as a zombie wounds. Then the figure again.
+// its pistol at a zombie as many squares away as its range, in a straight
+// line -- not across a corner -- taking as many of its lives as the figure
+// wounds; or waiting, doing nothing. Then the zombies, all of them an action
+// at a time: each action a step towards the figure, or once beside it, an
+// attack that takes as many of the figure's lives as a zombie wounds. Then
+// the figure again -- unless the zombies have taken all its lives, and it is
+// dead: then nobody moves any more.
 //
-// A zombie with no lives left is dead and gone. When the last of a wave is,
-// the figure is back in the middle with a whole turn, and the next wave
-// comes, one zombie more: the first where the first always starts, the
-// others anywhere free but the middle, somewhere else every time.
+// A zombie with no lives left is dead and gone, and earns the figure
+// ZOMBIE_REWARD. When the last of a wave is, the figure is back in the middle
+// with a whole turn, and the next wave comes, one zombie more: the first
+// where the first always starts, the others anywhere free but the middle,
+// somewhere else every time.
 
 #pragma once
 
 #include <random>
+#include <utility>
 #include <vector>
 
 // A square of the goban, counted from the top left.
@@ -32,6 +36,7 @@ struct Properties {
   int actions = 0;
   int lives   = 0;
   int wounds  = 0;
+  int range   = 0;  // how far its pistol reaches, in squares; none without one
 };
 
 class Goban {
@@ -39,9 +44,8 @@ public:
   // SIZE x SIZE squares.
   static constexpr int SIZE = 19;
 
-  // How far the figure's pistol reaches, in squares, left, right, up or down
-  // -- not across a corner. It never runs out.
-  static constexpr int PISTOL_RANGE = 3;
+  // What a dead zombie earns, in Kč.
+  static constexpr int ZOMBIE_REWARD = 1;
 
   // Where the figure starts, in the middle, and the first zombie of every
   // wave, below it at the bottom edge.
@@ -81,6 +85,12 @@ public:
   int                        figureLives() const { return this->lives; }
   const std::vector<Zombie>& zombies() const { return this->horde; }
 
+  // What the zombies killed this round have earned, in Kč.
+  int earnings() const { return this->earned; }
+  // The earnings, for the game's money, leaving none -- so they can't be
+  // taken twice.
+  int takeEarnings() { return std::exchange(this->earned, 0); }
+
 private:
   // One of the figure's actions used; the last hands the turn to the zombies.
   void spendFigureAction();
@@ -95,6 +105,7 @@ private:
   int                 lives  = 0;
   std::vector<Zombie> horde;
   int                 wave = 0;  // how many zombies the last wave had
+  int                 earned = 0;
 
   // What is left of the turn: the figure's actions, and once they are all
   // used, the zombies'. The zombies are on the move while they have any.

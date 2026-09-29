@@ -1,5 +1,6 @@
-// A game: its name, the properties of its figure and its zombies, the goban
-// being played, and the save it lives in between runs. What happens on the
+// A game: its name, the properties of its figure and its zombies, its money
+// and what it has bought with it, the goban being played, and the save it
+// lives in between runs. What happens on the
 // goban isn't saved: every Start begins it anew (see Goban).
 //
 // Saves are INI files, one per game, in %APPDATA%\VojackovaHra\saves\ (next
@@ -9,12 +10,15 @@
 #pragma once
 
 #include <game/Goban.hpp>
+#include <game/Upgrade.hpp>
 
 #include <array>
 #include <ctime>
 #include <filesystem>
+#include <iterator>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 struct Game {
@@ -32,10 +36,33 @@ struct Game {
   std::filesystem::path path;   // the save
   std::array<std::array<char, SIZE>, SIZE> board;
 
-  // The basic properties of the figure and of every white zombie. The same
-  // for every game so far, so not saved.
-  Properties figure{ .actions = 2, .lives = 1, .wounds = 1 };
+  // The basic properties of the figure, which upgrades bought improve, and
+  // of every white zombie, the same for every game and so not saved.
+  Properties figure{ .actions = 2, .lives = 1, .wounds = 1, .range = 3 };
   Properties zombie{ .actions = 2, .lives = 2, .wounds = 1 };
+
+  // In Kč: what every round on the goban has earned, added up, less what
+  // has been spent.
+  int money = 0;
+
+  // The secret password of the game's menu, and what typing it earns.
+  static constexpr std::string_view SECRET_PASSWORD = "magorie1";
+  static constexpr int              SECRET_REWARD   = 1000;
+
+  // How many times each of UPGRADES has been bought.
+  std::array<int, std::size(UPGRADES)> bought{};
+
+  // What UPGRADES[i] costs now; nothing once it has been bought as many
+  // times as it can be.
+  std::optional<int> price(size_t i) const;
+
+  // Buys UPGRADES[i] for the figure, if it is still sold and the money is
+  // there. False if not.
+  bool buy(size_t i);
+
+  // `typed` into the secret password's field: the reward if it is the
+  // password. False if it isn't.
+  bool enterPassword(std::string_view typed);
 
   // The round being played, from the last Start.
   Goban goban;

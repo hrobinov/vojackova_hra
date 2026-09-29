@@ -80,7 +80,17 @@ std::optional<Game> Game::Load(const std::filesystem::path& path)
 
   Game game;
   game.path = path;
-  game.name = ini.getString("game", "name", path.stem().string());
+  game.name  = ini.getString("game", "name", path.stem().string());
+  game.money = std::max(0, ini.getInt("game", "money", 0));
+  // No worse than a new game's figure.
+  const Properties start = game.figure;
+  game.figure.actions = std::max(start.actions, ini.getInt("figure", "actions", start.actions));
+  game.figure.lives   = std::max(start.lives, ini.getInt("figure", "lives", start.lives));
+  game.figure.wounds  = std::max(start.wounds, ini.getInt("figure", "wounds", start.wounds));
+  game.figure.range   = std::max(start.range, ini.getInt("figure", "range", start.range));
+  for (size_t i = 0; i < std::size(UPGRADES); ++i) {
+    game.bought[i] = std::clamp(ini.getInt("shop", UPGRADES[i].key, 0), 0, int(UPGRADES[i].prices.size()));
+  }
   for (int y = 0; y < SIZE; ++y) {
     const std::string row = ini.getString("board", RowKey(y), "");
     for (size_t x = 0; x < size_t(SIZE); ++x) {
@@ -91,11 +101,41 @@ std::optional<Game> Game::Load(const std::filesystem::path& path)
   return game;
 }
 
+std::optional<int> Game::price(size_t i) const
+{
+  const std::span<const int> prices = UPGRADES[i].prices;
+  if (size_t(this->bought[i]) >= prices.size()) return std::nullopt;
+  return prices[size_t(this->bought[i])];
+}
+
+bool Game::buy(size_t i)
+{
+  const std::optional<int> cost = this->price(i);
+  if (!cost || this->money < *cost) return false;
+  this->money -= *cost;
+  ++this->bought[i];
+  UPGRADES[i].apply(this->figure);
+  return true;
+}
+
+bool Game::enterPassword(std::string_view typed)
+{
+  if (typed != SECRET_PASSWORD) return false;
+  this->money += SECRET_REWARD;
+  return true;
+}
+
 bool Game::save() const
 {
   IniFile ini;
   ini.set("game", "name", this->name);
   ini.set("game", "saved", std::to_string(std::time(nullptr)));
+  ini.setInt("game", "money", this->money);
+  ini.setInt("figure", "actions", this->figure.actions);
+  ini.setInt("figure", "lives", this->figure.lives);
+  ini.setInt("figure", "wounds", this->figure.wounds);
+  ini.setInt("figure", "range", this->figure.range);
+  for (size_t i = 0; i < std::size(UPGRADES); ++i) ini.setInt("shop", UPGRADES[i].key, this->bought[i]);
   ini.setInt("board", "size", SIZE);
   for (int row = 0; row < SIZE; ++row) {
     ini.set("board", RowKey(row), std::string(this->board[size_t(row)].begin(), this->board[size_t(row)].end()));

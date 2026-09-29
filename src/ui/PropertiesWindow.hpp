@@ -1,6 +1,7 @@
 // A small window of someone's basic properties -- a row each for actions,
-// lives and wounds, the value at the right end -- as the game's menu shows
-// them for the figure and for the white zombie.
+// lives, wounds and, for someone with a pistol, range, the value at the
+// right end -- as the game's menu shows them for the figure and for the
+// white zombie.
 
 #pragma once
 
@@ -12,7 +13,8 @@
 
 namespace agui {
 class Label;
-}
+class Widget;
+}  // namespace agui
 
 namespace ui {
 
@@ -24,10 +26,15 @@ public:
 
   void show(const Properties& properties);
 
+  // Wide enough for the longest title.
+  static constexpr int PANEL_W = 240;
+
 private:
   agui::Label* actions = nullptr;
   agui::Label* lives   = nullptr;
   agui::Label* wounds  = nullptr;
+  agui::Label* range   = nullptr;
+  agui::Widget* rangeRow = nullptr;
 };
 
 }  // namespace ui

@@ -25,6 +25,7 @@ void Goban::start(const Properties& figureStarts, const Properties& zombieStarts
   this->lives             = figureStarts.lives;
   this->figureActionsLeft = figureStarts.actions;
   this->zombieActionsLeft = 0;
+  this->earned            = 0;
   this->spawn(1);
 }
 
@@ -45,10 +46,13 @@ void Goban::shoot(Position at)
   // In a straight line, and no further than the pistol reaches.
   const int dx = std::abs(at.x - this->figure.x);
   const int dy = std::abs(at.y - this->figure.y);
-  if ((dx != 0 && dy != 0) || dx + dy > PISTOL_RANGE) return;
+  if ((dx != 0 && dy != 0) || dx + dy > this->figureProperties.range) return;
 
   target->lives -= this->figureProperties.wounds;
-  if (target->lives <= 0) this->horde.erase(target);
+  if (target->lives <= 0) {
+    this->horde.erase(target);
+    this->earned += ZOMBIE_REWARD;
+  }
   // The last of the wave: the figure back in the middle for the next, and
   // with the whole of a turn before it.
   if (this->horde.empty()) {
@@ -97,6 +101,11 @@ void Goban::zombieAction()
     }
   }
 
+  // A dead figure: nobody moves any more.
+  if (this->lives == 0) {
+    this->zombieActionsLeft = 0;
+    return;
+  }
   if (--this->zombieActionsLeft == 0) this->figureActionsLeft = this->figureProperties.actions;
 }
 

@@ -36,6 +36,9 @@ private:
   void handleMenu();
   // While it is the zombie's turn on the goban: its actions, one at a time.
   void updateZombie();
+  // The round's earnings into the game's money, which is saved at once, so
+  // it can't be lost. When the goban is left, however it is.
+  void bankEarnings();
   // Starts playing `started`.
   void play(Game started);
   void updateSettings();
@@ -53,6 +56,7 @@ private:
   // as Save and quit would.
   std::optional<Game> game;
   float zombieWait = 0.0f;  // seconds since the zombie's last step
+  float deathWait  = 0.0f;  // seconds the figure has been dead, on the goban
 
   bool quitRequested = false;
 };

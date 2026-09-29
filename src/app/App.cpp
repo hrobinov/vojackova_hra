@@ -31,6 +31,7 @@ App::App()
 int App::run()
 {
   while (!this->quitRequested) this->frame();
+  if (this->game && this->gui.menu().gobanShown()) this->bankEarnings();
   if (this->game) this->game->save();
   this->settings.save();  // for the window size, if nothing else
   return 0;
@@ -45,12 +46,19 @@ void App::frame()
   this->gui.update();
   this->handleMenu();
   this->updateZombie();
-  // With no lives left the figure is dead: back to the game's menu, as Back
-  // to menu would.
+  // With no lives left the figure is dead: after a moment to see it, back to
+  // the game's menu, as Back to menu would. The moment waits while paused.
   if (this->game && this->game->goban.figureLives() == 0 && this->gui.menu().gobanShown()) {
-    this->gui.menu().leaveGoban();
+    if (this->gui.menu().current() == ui::MainMenu::Page::Goban) this->deathWait += GetFrameTime();
+    if (this->deathWait >= cfg::DEATH_SECONDS) {
+      this->deathWait = 0.0f;
+      this->bankEarnings();
+      this->gui.menu().leaveGoban();
+    }
+  } else {
+    this->deathWait = 0.0f;
   }
-  if (this->game) this->gui.menu().showLives(this->game->goban.figureLives());
+  if (this->game) this->gui.menu().showRound(this->game->goban.figureLives(), this->game->goban.earnings());
   if (WindowShouldClose()) this->quitRequested = true;
 
   BeginDrawing();
@@ -65,15 +73,17 @@ void App::handleKeys()
   ui::MainMenu& menu = this->gui.menu();
   if (IsKeyPressed(KEY_ESCAPE)) menu.cancel();
 
-  // The arrow keys move the figure, a square a press -- and on and on while
-  // one is held, as a key held in a text field repeats. Not while paused;
-  // while the zombie moves, Game::move() does nothing.
+  // The arrow keys, or W A S D, move the figure, a square a press -- and on
+  // and on while one is held, as a key held in a text field repeats. Not
+  // while paused; while the zombies move, Goban::move() does nothing.
   if (this->game && menu.current() == ui::MainMenu::Page::Goban) {
-    const auto pressed = [](int key) { return IsKeyPressed(key) || IsKeyPressedRepeat(key); };
-    if (pressed(KEY_LEFT)) this->game->goban.move(-1, 0);
-    if (pressed(KEY_RIGHT)) this->game->goban.move(1, 0);
-    if (pressed(KEY_UP)) this->game->goban.move(0, -1);
-    if (pressed(KEY_DOWN)) this->game->goban.move(0, 1);
+    const auto pressed = [](int arrow, int letter) {
+      return IsKeyPressed(arrow) || IsKeyPressedRepeat(arrow) || IsKeyPressed(letter) || IsKeyPressedRepeat(letter);
+    };
+    if (pressed(KEY_LEFT, KEY_A)) this->game->goban.move(-1, 0);
+    if (pressed(KEY_RIGHT, KEY_D)) this->game->goban.move(1, 0);
+    if (pressed(KEY_UP, KEY_W)) this->game->goban.move(0, -1);
+    if (pressed(KEY_DOWN, KEY_S)) this->game->goban.move(0, 1);
     // Space waits. Only on a press: held, it would throw the turn away.
     if (IsKeyPressed(KEY_SPACE)) this->game->goban.wait();
 
@@ -113,6 +123,23 @@ void App::handleMenu()
     // From the beginning, every time.
     if (this->game) this->game->goban.start(this->game->figure, this->game->zombie);
     break;
+  case ui::MainMenu::Action::LeaveGoban:
+    this->bankEarnings();
+    break;
+  case ui::MainMenu::Action::BuyUpgrade:
+    // Saved at once, as money is.
+    if (this->game && this->game->buy(menu.boughtUpgrade())) {
+      this->game->save();
+      menu.showGame(*this->game);
+    }
+    break;
+  case ui::MainMenu::Action::EnterPassword:
+    if (this->game && this->game->enterPassword(menu.password())) {
+      this->game->save();
+      menu.showGame(*this->game);
+    }
+    menu.clearPassword();
+    break;
   case ui::MainMenu::Action::SaveAndQuit:
     if (this->game) this->game->save();
     this->game.reset();
@@ -129,6 +156,14 @@ void App::handleMenu()
   case ui::MainMenu::Action::None:
     break;
   }
+}
+
+void App::bankEarnings()
+{
+  if (!this->game) return;
+  this->game->money += this->game->goban.takeEarnings();
+  this->game->save();
+  this->gui.menu().showGame(*this->game);
 }
 
 void App::updateZombie()
