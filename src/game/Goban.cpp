@@ -17,11 +17,13 @@ int Sign(int value)
 
 }  // namespace
 
-void Goban::start(const Properties& figureStarts, const Properties& white, const Properties& black, int firstWave)
+void Goban::start(const Properties& figureStarts, const Properties& white, const Properties& black, const Properties& red,
+                  int firstWave)
 {
   this->figureProperties    = figureStarts;
   this->zombieProperties[0] = white;
   this->zombieProperties[1] = black;
+  this->zombieProperties[2] = red;
   this->figure            = FIGURE_START;
   this->lives             = figureStarts.lives;
   this->rockets           = figureStarts.rockets;
@@ -47,13 +49,13 @@ bool Goban::shoot(Position at)
   if (this->figureActionsLeft == 0) return false;
   const auto target = std::find_if(this->horde.begin(), this->horde.end(), [at](const Zombie& z) { return z.at == at; });
   if (target == this->horde.end()) return false;
-  // In a straight line, no further than the pistol reaches -- or across a
-  // corner, but only right beside the figure.
+  // In a straight line, no further than the pistol reaches -- or anywhere
+  // in the square round the figure, NEAR squares out, across corners too.
   const int  dx       = std::abs(at.x - this->figure.x);
   const int  dy       = std::abs(at.y - this->figure.y);
   const bool straight = (dx == 0 || dy == 0) && dx + dy <= this->figureProperties.range;
-  const bool corner   = dx == 1 && dy == 1;
-  if (!straight && !corner) return false;
+  const bool near     = std::max(dx, dy) <= NEAR;
+  if (!straight && !near) return false;
 
   target->lives -= this->figureProperties.wounds;
   this->afterHit();
@@ -108,7 +110,7 @@ void Goban::afterHit()
   for (const Zombie& zombie : this->horde) {
     if (zombie.lives > 0) continue;
     this->deaths.push_back(zombie);
-    this->earned += zombie.kind == Kind::Black ? BLACK_ZOMBIE_REWARD : ZOMBIE_REWARD;
+    this->earned += zombie.kind == Kind::Red ? RED_ZOMBIE_REWARD : zombie.kind == Kind::Black ? BLACK_ZOMBIE_REWARD : ZOMBIE_REWARD;
   }
   std::erase_if(this->horde, [](const Zombie& zombie) { return zombie.lives <= 0; });
   // The figure killed by its own rocket: nobody moves any more.
@@ -181,18 +183,31 @@ void Goban::zombieAction()
   if (--this->zombieActionsLeft == 0) this->figureActionsLeft = this->figureProperties.actions;
 }
 
-void Goban::spawn(int count)
+int Goban::WaveSize(int wave)
 {
-  this->wave = count;
+  const int more     = std::min(wave, EVEN_MORE_FROM - 1) - 1;
+  const int evenMore = std::max(0, wave - (EVEN_MORE_FROM - 1));
+  return 1 + MORE_A_WAVE * more + EVEN_MORE_A_WAVE * evenMore;
+}
+
+void Goban::spawn(int number)
+{
+  this->wave = number;
   this->horde.clear();
-  // Each zombie black by chance, the further the wave the likelier.
-  const int chance = count >= MORE_BLACK_FROM ? MORE_BLACK_CHANCE : count >= BLACK_FROM ? BLACK_CHANCE : 0;
+  const int count = WaveSize(number);
+  // Each zombie black by chance, the further the wave the likelier; one
+  // that would be white, red by chance, far enough on.
+  const int black = number >= MORE_BLACK_FROM ? MORE_BLACK_CHANCE : number >= BLACK_FROM ? BLACK_CHANCE : 0;
+  const int red   = number >= RED_FROM ? RED_CHANCE : 0;
   std::uniform_int_distribution<int> percent(0, 99);
-  const auto kind = [&] { return percent(this->random) < chance ? Kind::Black : Kind::White; };
+  const auto kind = [&] {
+    if (percent(this->random) < black) return Kind::Black;
+    return percent(this->random) < red ? Kind::Red : Kind::White;
+  };
   // The first where it always starts, unless the figure is standing there.
   if (this->free(ZOMBIE_START)) {
     const Kind first = kind();
-    this->horde.push_back({ ZOMBIE_START, this->properties(first).lives, first });
+    this->horde.push_back({ ZOMBIE_START, this->properties(first).lives, first, unsigned(this->random()), ++this->lastId });
   }
   // The rest on free squares picked at random -- never the red one in the
   // middle, where the figure starts. There are always enough, but for a wave
@@ -207,7 +222,7 @@ void Goban::spawn(int count)
     if (squares.empty()) break;
     std::uniform_int_distribution<size_t> pick(0, squares.size() - 1);
     const Kind which = kind();
-    this->horde.push_back({ squares[pick(this->random)], this->properties(which).lives, which });
+    this->horde.push_back({ squares[pick(this->random)], this->properties(which).lives, which, unsigned(this->random()), ++this->lastId });
   }
 }
 

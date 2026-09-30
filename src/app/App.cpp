@@ -2,6 +2,7 @@
 
 #include <app/Config.hpp>
 #include <game/BoardView.hpp>
+#include <game/Figures.hpp>
 #include <ui/Fonts.hpp>
 #include <ui/MainMenu.hpp>
 
@@ -9,6 +10,7 @@
 #include <rlgl.h>
 
 #include <algorithm>
+#include <cmath>
 #include <cstdlib>
 #include <vector>
 
@@ -26,6 +28,7 @@ App::Window::Window(const Settings& settings)
 App::Window::~Window()
 {
   ui::UnloadFonts();
+  figures::Unload();
   CloseAudioDevice();
   CloseWindow();
 }
@@ -72,14 +75,18 @@ void App::frame()
   if (WindowShouldClose()) this->quitRequested = true;
 
   // Explosions and puddles only while the goban is there to show them.
-  if (this->gui.menu().gobanShown()) {
+  if (this->gui.menu().gobanShown() && this->game) {
     this->explosions.update(GetFrameTime());
     this->splatters.update(GetFrameTime());
+    this->motion.update(this->game->goban, GetFrameTime());
   } else {
     this->explosions.clear();
     this->splatters.clear();
+    this->motion.clear();
     this->dying.clear();
     this->bangs.clear();
+    this->waveSeen = 0;
+    this->waveOver = false;
   }
 
   BeginDrawing();
@@ -94,8 +101,9 @@ void App::frame()
     rlTranslatef(shake.x, shake.y, 0.0f);
     this->scenery.draw();
     this->splatters.draw(goban);
+    this->drawAim(goban);
     const float fallen = this->soldierDown ? std::min(1.0f, this->deathWait / cfg::FALL_SECONDS) : 0.0f;
-    DrawBoard(this->game->goban, GetScreenWidth(), GetScreenHeight(), fallen);
+    DrawBoard(this->game->goban, this->motion, GetScreenWidth(), GetScreenHeight(), fallen);
     this->explosions.draw(goban);
     rlPopMatrix();
   }
@@ -130,13 +138,9 @@ void App::handleKeys()
     // rocket anywhere, the shotgun right beside the figure. It is gone for
     // this round; the next Start has it back.
     if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
-      const BoardLayout goban = LayOutBoard(GetScreenWidth(), GetScreenHeight());
-      const Vector2     mouse = GetMousePosition();
-      const int         x     = int(mouse.x) - goban.left;
-      const int         y     = int(mouse.y) - goban.top;
-      if (x >= 0 && y >= 0 && x < goban.side && y < goban.side) {
-        const Position at{ x / goban.square, y / goban.square };
-        Goban& round = this->game->goban;
+      if (const std::optional<Position> square = this->squareUnderMouse()) {
+        const Position at    = *square;
+        Goban&         round = this->game->goban;
         switch (menu.readied()) {
         case ui::MainMenu::Special::None:
           if (round.shoot(at)) {
@@ -157,7 +161,7 @@ void App::handleKeys()
             menu.disarm();
             this->explosions.addRocket(from, at, std::move(doomed));
             this->bangs.push_back(Explosions::FlightTime(from, at));
-            this->updateDeaths(Explosions::FlightTime(from, at), false);
+            this->updateDeaths(Explosions::FlightTime(from, at), at);
           }
           break;
         }
@@ -184,6 +188,41 @@ void App::handleKeys()
   if (IsKeyPressed(KEY_KP_0)) this->scale(Scale::Automatic);
 }
 
+std::optional<Position> App::squareUnderMouse() const
+{
+  const BoardLayout goban = LayOutBoard(GetScreenWidth(), GetScreenHeight());
+  const Vector2     mouse = GetMousePosition();
+  const int         x     = int(mouse.x) - goban.left;
+  const int         y     = int(mouse.y) - goban.top;
+  if (x < 0 || y < 0 || x >= goban.square * Goban::SIZE || y >= goban.square * Goban::SIZE) return std::nullopt;
+  return Position{ x / goban.square, y / goban.square };
+}
+
+void App::drawAim(const BoardLayout& goban)
+{
+  const ui::MainMenu::Special readied = this->gui.menu().readied();
+  const std::optional<Position> at    = this->squareUnderMouse();
+  if (readied == ui::MainMenu::Special::None || !at || !this->game) return;
+
+  std::vector<Position> hit;
+  if (readied == ui::MainMenu::Special::Rocket) {
+    for (int dy = -1; dy <= 1; ++dy) {
+      for (int dx = -1; dx <= 1; ++dx) hit.push_back({ at->x + dx, at->y + dy });
+    }
+  } else if (const auto spread = Goban::ShotgunSpread(this->game->goban.figureAt(), *at)) {
+    hit.assign(spread->begin(), spread->end());
+  }
+  // Faint, and breathing a little, so it is seen but doesn't hide the grass.
+  const float strength = cfg::AIM_ALPHA * (0.8f + 0.2f * std::sin(float(GetTime()) * 5.0f));
+  for (const Position square : hit) {
+    if (square.x < 0 || square.y < 0 || square.x >= Goban::SIZE || square.y >= Goban::SIZE) continue;
+    const Rectangle r = { float(goban.left + square.x * goban.square + goban.line), float(goban.top + square.y * goban.square + goban.line),
+                          float(goban.square - goban.line), float(goban.square - goban.line) };
+    DrawRectangleRec(r, Fade(cfg::AIM_COLOR, strength));
+    DrawRectangleLinesEx(r, std::max(1.0f, float(goban.square) * 0.04f), Fade(cfg::AIM_COLOR, strength * 1.6f));
+  }
+}
+
 void App::handleMenu()
 {
   ui::MainMenu& menu = this->gui.menu();
@@ -197,7 +236,8 @@ void App::handleMenu()
     break;
   case ui::MainMenu::Action::StartGoban:
     // From the beginning, or a checkpoint -- never where the last round was.
-    if (this->game) this->game->goban.start(this->game->figure, this->game->zombie, this->game->blackZombie, menu.startWave());
+    if (this->game) this->game->goban.start(this->game->figure, this->game->zombie, this->game->blackZombie, this->game->redZombie,
+                                              menu.startWave());
     break;
   case ui::MainMenu::Action::LeaveGoban:
     this->bankEarnings();
@@ -241,10 +281,10 @@ void App::bankEarnings()
   this->gui.menu().showGame(*this->game);
 }
 
-void App::updateDeaths(float delay, bool groans)
+void App::updateDeaths(float delay, std::optional<Position> blast)
 {
   if (!this->game) return;
-  for (const Goban::Zombie& zombie : this->game->goban.takeDeaths()) this->dying.push_back({ zombie, delay, groans });
+  for (const Goban::Zombie& zombie : this->game->goban.takeDeaths()) this->dying.push_back({ zombie, delay, blast });
   // Only as time goes on -- not again as a rocket is fired, in the same frame.
   if (delay > 0.0f) return;
 
@@ -260,10 +300,21 @@ void App::updateDeaths(float delay, bool groans)
   for (Dying& death : this->dying) death.delay -= GetFrameTime();
   std::erase_if(this->dying, [this, soldier](const Dying& death) {
     if (death.delay > 0.0f) return false;
-    this->splatters.addBody(death.zombie, Facing(death.zombie.at, soldier));
-    if (death.groans) this->sounds.zombieDies(death.zombie.kind);
+    this->splatters.addBody(death.zombie, Facing(death.zombie.at, soldier), death.blast);
+    if (!death.blast) this->sounds.zombieDies(death.zombie.kind);
     return true;
   });
+
+  // A new wave: the last one's dead fade -- once the last of them has
+  // fallen, and a moment after, to see it fall.
+  if (this->game->goban.waveNumber() != this->waveSeen) {
+    this->waveOver = this->waveSeen != 0 && this->game->goban.waveNumber() > this->waveSeen;
+    this->waveSeen = this->game->goban.waveNumber();
+  }
+  if (this->waveOver && this->dying.empty()) {
+    this->splatters.fadeAll(cfg::DEAD_STAY_SECONDS);
+    this->waveOver = false;
+  }
 
   // The soldier, once, as he dies: down he goes.
   const bool dead = this->gui.menu().gobanShown() && this->game->goban.figureLives() == 0;
@@ -294,6 +345,10 @@ void App::updateZombie()
 
 void App::play(Game started)
 {
+  // The goban's forest and figures, got ready while the game's menu is up,
+  // so Start doesn't wait on them.
+  figures::Load();
+  this->scenery.prepare(GetScreenWidth(), GetScreenHeight());
   this->game = std::move(started);
   this->gui.menu().play(*this->game);
 }

@@ -4,8 +4,8 @@
 // It is played in turns. First the figure. Each of its actions is one of:
 //   - a step, a square left, right, up or down, onto a free square;
 //   - a shot of its pistol at a zombie as many squares away as its range in
-//     a straight line, or across a corner right beside it, taking as many of
-//     its lives as the figure wounds;
+//     a straight line, or anywhere NEAR squares round it, across corners
+//     too, taking as many of its lives as the figure wounds;
 //   - a rocket, if it has one left this round, at any square, taking
 //     ROCKET_WOUNDS lives from everyone on it and on the eight squares round
 //     it -- the figure too, if it is that close;
@@ -21,7 +21,7 @@
 //
 // A zombie with no lives left is dead and gone, and earns the figure
 // ZOMBIE_REWARD, or a black one BLACK_ZOMBIE_REWARD. When the last of a wave is, the figure is back in the middle
-// with a whole turn, and the next wave comes, one zombie more: the first
+// with a whole turn, and the next wave comes, MORE_A_WAVE zombies more: the first
 // where the first always starts, the others anywhere free but the middle,
 // somewhere else every time.
 
@@ -56,9 +56,10 @@ public:
   // SIZE x SIZE squares.
   static constexpr int SIZE = 19;
 
-  // What a dead zombie earns, in Kč: a white one, and a black one.
+  // What a dead zombie earns, in Kč: a white one, a black one, a red one.
   static constexpr int ZOMBIE_REWARD       = 1;
   static constexpr int BLACK_ZOMBIE_REWARD = 3;
+  static constexpr int RED_ZOMBIE_REWARD   = 5;
 
   // What a rocket and a shotgun's shell take from every zombie they hit.
   static constexpr int ROCKET_WOUNDS  = 3;
@@ -69,26 +70,45 @@ public:
   static constexpr Position FIGURE_START{ SIZE / 2, SIZE / 2 };
   static constexpr Position ZOMBIE_START{ SIZE / 2, SIZE - 1 };
 
+  // How far round it, in every direction, the figure's pistol reaches, the
+  // square of it across corners too -- further only in a straight line.
+  static constexpr int NEAR = 2;
+
+  // How many zombies more each wave has than the one before: MORE_A_WAVE,
+  // and from wave EVEN_MORE_FROM on, EVEN_MORE_A_WAVE.
+  static constexpr int MORE_A_WAVE      = 2;
+  static constexpr int EVEN_MORE_FROM   = 10;
+  static constexpr int EVEN_MORE_A_WAVE = 3;
+
   // The kinds of zombie. Each zombie of a wave may be black rather than
   // white: from BLACK_FROM on with a BLACK_CHANCE in 100, from MORE_BLACK_FROM
-  // on with a MORE_BLACK_CHANCE in 100.
-  enum class Kind { White, Black };
+  // on with a MORE_BLACK_CHANCE in 100. And one that would be white, from
+  // RED_FROM on, may be red instead, with a RED_CHANCE in 100.
+  enum class Kind { White, Black, Red };
   static constexpr int BLACK_FROM        = 5;
   static constexpr int BLACK_CHANCE      = 10;
   static constexpr int MORE_BLACK_FROM   = 10;
   static constexpr int MORE_BLACK_CHANCE = 25;
+  static constexpr int RED_FROM          = 15;
+  static constexpr int RED_CHANCE        = 25;
+
+  // How many zombies wave `wave` has.
+  static int WaveSize(int wave);
 
   struct Zombie {
     Position at;
     int      lives = 0;
     Kind     kind  = Kind::White;
+    unsigned look  = 0;  // which of the ways a zombie can look, picked as it comes on
+    unsigned id    = 0;  // which zombie it is, none other the same, to follow it by
   };
 
   // A new round, for a figure and zombies of each kind with these
   // properties: the figure where it starts with all its lives, and to move,
   // and the wave `wave` -- the first, a single zombie, unless it starts
   // further on.
-  void start(const Properties& figure, const Properties& white, const Properties& black, int wave = 1);
+  void start(const Properties& figure, const Properties& white, const Properties& black, const Properties& red,
+             int wave = 1);
 
   // The figure's step a square that way, if it is its turn and the square is
   // on the goban and free. A step not taken costs no action.
@@ -137,7 +157,8 @@ public:
   const Properties&          figureStart() const { return this->figureProperties; }
   const std::vector<Zombie>& zombies() const { return this->horde; }
   // Which wave it is -- the round, as the goban's title calls it: 1 to start
-  // with, and one more with each wave, as many as it has zombies.
+  // with, and one more with each wave, which has MORE_A_WAVE zombies more
+  // than the one before -- the first, a single one.
   int                        waveNumber() const { return this->wave; }
 
   // The zombies killed since this was last asked, and none left to ask about.
@@ -155,14 +176,14 @@ private:
   // After the figure has hit zombies: the dead ones gone and earned, and the
   // action spent -- or with the last of the wave dead, the next wave.
   void afterHit();
-  // The next wave, of `count` zombies.
-  void spawn(int count);
+  // Wave `wave`, of as many zombies as it has.
+  void spawn(int wave);
   bool free(Position at) const;
 
-  const Properties& properties(Kind kind) const { return this->zombieProperties[kind == Kind::Black ? 1 : 0]; }
+  const Properties& properties(Kind kind) const { return this->zombieProperties[int(kind)]; }
 
   Properties figureProperties;
-  Properties zombieProperties[2];  // white, black
+  Properties zombieProperties[3];  // white, black, red
 
   Position            figure = FIGURE_START;
   int                 lives  = 0;
@@ -172,6 +193,7 @@ private:
   int                 wave = 0;  // how many zombies the last wave had
   int                 earned = 0;
   std::vector<Zombie> deaths;
+  unsigned            lastId = 0;
 
   // What is left of the turn: the figure's actions, and once they are all
   // used, the zombies'. The zombies are on the move while they have any.

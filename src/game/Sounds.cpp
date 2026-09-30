@@ -30,7 +30,7 @@ struct Embedded {
 constexpr float GROAN_VOLUME = 0.8f;
 constexpr float CRY_VOLUME   = 0.9f;
 constexpr float PUNCH_VOLUME = 0.8f;
-constexpr float SHOT_VOLUME  = 0.6f;
+constexpr float SHOT_VOLUME  = 0.3f;  // shots, softer than the rest
 constexpr float BOOM_VOLUME  = 1.0f;
 
 }  // namespace
@@ -87,8 +87,9 @@ void Sounds::play(Takes& takes, float pitch, float wobble)
 
 void Sounds::zombieDies(Goban::Kind kind)
 {
-  // A black zombie's groan deeper.
-  if (kind == Goban::Kind::Black) this->play(this->blackZombie, 0.85f, 0.05f);
+  // A black zombie's groan deeper, a red one's deeper still.
+  if (kind == Goban::Kind::Red) this->play(this->blackZombie, 0.7f, 0.04f);
+  else if (kind == Goban::Kind::Black) this->play(this->blackZombie, 0.85f, 0.05f);
   else                            this->play(this->whiteZombie, 1.0f, 0.08f);
 }
 

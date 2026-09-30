@@ -8,6 +8,7 @@
 #include <app/Settings.hpp>
 #include <game/Explosions.hpp>
 #include <game/Game.hpp>
+#include <game/Motion.hpp>
 #include <game/Scenery.hpp>
 #include <game/Sounds.hpp>
 #include <game/Splatters.hpp>
@@ -37,9 +38,9 @@ private:
   // when the rocket that killed it has landed. And the bang of a rocket, as
   // it lands.
   struct Dying {
-    Goban::Zombie zombie;
-    float         delay;
-    bool          groans;
+    Goban::Zombie           zombie;
+    float                   delay;
+    std::optional<Position> blast;  // where the rocket that killed it hit
   };
 
   // The interface scale's shortcuts: a step up or down, or back to automatic.
@@ -51,9 +52,15 @@ private:
   // While it is the zombie's turn on the goban: its actions, one at a time.
   void updateZombie();
   // The zombies killed since, and the soldier if he has been: bodies,
-  // puddles, groans, his fall and his cry. Killed by a rocket, `delay` till
-  // it lands and without a groan: its bang is enough.
-  void updateDeaths(float delay = 0.0f, bool groans = true);
+  // puddles, groans, his fall and his cry. Killed by a rocket that hit
+  // `blast`, `delay` till it lands, more blood, and without a groan: its
+  // bang is enough.
+  void updateDeaths(float delay = 0.0f, std::optional<Position> blast = std::nullopt);
+  // The goban's square under the mouse, if it is over one.
+  std::optional<Position> squareUnderMouse() const;
+  // With a rocket or the shotgun readied: a faint red over the squares it
+  // would hit, fired at the square under the mouse.
+  void drawAim(const BoardLayout& goban);
   // The round's earnings into the game's money, which is saved at once, so
   // it can't be lost. When the goban is left, however it is.
   void bankEarnings();
@@ -77,11 +84,14 @@ private:
   float deathWait  = 0.0f;  // seconds the figure has been dead, on the goban
   Explosions explosions;    // the rockets going off on the goban
   Scenery    scenery;       // the forest the goban lies in
+  Motion     motion;        // everyone on it gliding and swaying
   Splatters  splatters;     // what the dead leave on it
   Sounds     sounds;
   std::vector<Dying> dying;
   std::vector<float> bangs;  // rockets yet to land, how long till they do
   bool       soldierDown = false;  // his fall begun, and his cry heard
+  int        waveSeen    = 0;      // the wave last seen on the goban
+  bool       waveOver    = false;  // its dead to fade, once all have fallen
 
   bool quitRequested = false;
 };

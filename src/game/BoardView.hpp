@@ -8,6 +8,7 @@
 #pragma once
 
 #include <game/Goban.hpp>
+#include <game/Motion.hpp>
 
 #include <raylib.h>
 
@@ -23,8 +24,9 @@ struct BoardLayout {
 };
 BoardLayout LayOutBoard(int screenWidth, int screenHeight);
 
-// `fallen`: how far the soldier, dead, has fallen, from 0 (not at all) to 1.
-void DrawBoard(const Goban& goban, int screenWidth, int screenHeight, float fallen = 0.0f);
+// Everyone where `motion` has them seen, gliding and swaying. `fallen`: how
+// far the soldier, dead, has fallen, from 0 (not at all) to 1.
+void DrawBoard(const Goban& goban, const Motion& motion, int screenWidth, int screenHeight, float fallen = 0.0f);
 
 // The way someone at `from` faces to look at `to`, a unit long; up if they
 // are on the same square.
