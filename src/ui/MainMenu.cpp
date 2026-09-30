@@ -22,6 +22,8 @@ namespace {
 constexpr int CORNER_GAP = 16;
 // How wide the command line F3 opens is.
 constexpr int COMMAND_W = 420;
+// How many checkpoints to a row beside Start.
+constexpr int CHECKPOINTS_A_ROW = 4;
 // How big Start is; each checkpoint beside it is as tall and half as wide.
 constexpr int START_W = 160;
 constexpr int START_H = 50;  // menu_button's height
@@ -91,22 +93,11 @@ MainMenu::MainMenu(agui::Gui& gui, Theme& theme, const ::Settings& live)
 
   // The game's menu: Start, with the checkpoints reached beside it.
   agui::VerticalFlow& gameButtons = column(8);
-  const auto startAt = [this](int wave) {
-    this->startingWave = wave;
-    this->pending      = Action::StartGoban;
-    this->open(Page::Goban);
-  };
   agui::HorizontalFlow& starts = row(8);
-  starts << footerButton("Start", &this->game, [startAt] { startAt(1); }, &theme.continueButton, START_W);
-  for (int wave : ::Game::CHECKPOINTS) {
-    const std::string text = "Kolo " + std::to_string(wave);
-    // As tall as Start and half as wide: a plain button rather than a big one.
-    agui::Button& checkpoint = footerButton(text.c_str(), &this->game, [startAt, wave] { startAt(wave); }, nullptr, START_W / 2);
-    checkpoint.style.setMinimalHeight(START_H);
-    checkpoint.style.setMaximalHeight(START_H);
-    this->checkpoints.push_back(&checkpoint);
-    starts << checkpoint;
-  }
+  starts.style.setVerticalAlign(agui::VerticalAlign::Top);
+  starts << footerButton("Start", &this->game, [this] { this->startAt(1); }, &theme.continueButton, START_W);
+  this->checkpoints = &column(8);
+  starts << *this->checkpoints;
   gameButtons << starts;
   this->game << gameButtons;
 
@@ -233,6 +224,13 @@ void MainMenu::play(const ::Game& played)
   this->open(Page::Game);
 }
 
+void MainMenu::startAt(int wave)
+{
+  this->startingWave = wave;
+  this->pending      = Action::StartGoban;
+  this->open(Page::Goban);
+}
+
 void MainMenu::showGame(const ::Game& shown)
 {
   this->figure.show(shown.figure);
@@ -241,8 +239,26 @@ void MainMenu::showGame(const ::Game& shown)
   this->redZombie.show(shown.redZombie);
   this->moneyText->setText(std::to_string(shown.money) + " Kč");
   for (size_t i = 0; i < this->shop.size(); ++i) this->shop[i]->show(shown.price(i), shown.money);
-  for (size_t i = 0; i < this->checkpoints.size(); ++i) {
-    this->checkpoints[i]->setVisible(shown.furthestWave >= ::Game::CHECKPOINTS[i]);
+  // The checkpoints reached, rows of them beside Start, made again only when
+  // another has been reached.
+  const int reached = shown.furthestWave / ::Game::CHECKPOINT_EVERY;
+  if (reached != this->checkpointsShown) {
+    this->checkpointsShown = reached;
+    this->checkpoints->clear();
+    agui::HorizontalFlow* line = nullptr;
+    for (int i = 1; i <= reached; ++i) {
+      if ((i - 1) % CHECKPOINTS_A_ROW == 0) {
+        line = &row(8);
+        *this->checkpoints << *line;
+      }
+      const int         wave = i * ::Game::CHECKPOINT_EVERY;
+      const std::string text = "Kolo " + std::to_string(wave);
+      // As tall as Start and half as wide: a plain button rather than a big one.
+      agui::Button& checkpoint = footerButton(text.c_str(), &this->game, [this, wave] { this->startAt(wave); }, nullptr, START_W / 2);
+      checkpoint.style.setMinimalHeight(START_H);
+      checkpoint.style.setMaximalHeight(START_H);
+      *line << checkpoint;
+    }
   }
 }
 

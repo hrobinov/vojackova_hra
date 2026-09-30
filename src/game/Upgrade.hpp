@@ -1,6 +1,6 @@
 // What the shop in the game's menu sells: upgrades of the figure, and its
-// special abilities. Each can be bought as many times as it has prices, one
-// after another, each dearer -- and after the last, never again.
+// special abilities. Each costs its prices, one after another, each dearer --
+// and after the last, twice what it cost before, every time, for ever.
 
 #pragma once
 

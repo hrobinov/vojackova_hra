@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <charconv>
+#include <limits>
 #include <cstdio>
 #include <system_error>
 
@@ -92,7 +93,7 @@ std::optional<Game> Game::Load(const std::filesystem::path& path)
   game.figure.rockets = std::max(0, ini.getInt("figure", "rockets", 0));
   game.figure.shells  = std::max(0, ini.getInt("figure", "shells", 0));
   for (size_t i = 0; i < std::size(UPGRADES); ++i) {
-    game.bought[i] = std::clamp(ini.getInt("shop", UPGRADES[i].key, 0), 0, int(UPGRADES[i].prices.size()));
+    game.bought[i] = std::max(0, ini.getInt("shop", UPGRADES[i].key, 0));
   }
   for (int y = 0; y < SIZE; ++y) {
     const std::string row = ini.getString("board", RowKey(y), "");
@@ -107,8 +108,13 @@ std::optional<Game> Game::Load(const std::filesystem::path& path)
 std::optional<int> Game::price(size_t i) const
 {
   const std::span<const int> prices = UPGRADES[i].prices;
-  if (size_t(this->bought[i]) >= prices.size()) return std::nullopt;
-  return prices[size_t(this->bought[i])];
+  const size_t               times  = size_t(this->bought[i]);
+  if (times < prices.size()) return prices[times];
+  // Past its prices: twice the last, and twice that, and on -- till it
+  // would be more than there is any way to have.
+  long long cost = prices.back();
+  for (size_t past = prices.size(); past <= times && cost < std::numeric_limits<int>::max(); ++past) cost *= 2;
+  return int(std::min<long long>(cost, std::numeric_limits<int>::max()));
 }
 
 bool Game::buy(size_t i)

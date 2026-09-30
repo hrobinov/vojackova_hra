@@ -34,6 +34,7 @@ struct Settings;
 
 namespace agui {
 class Button;
+class VerticalFlow;
 class Gui;
 class TextField;
 }  // namespace agui
@@ -185,9 +186,12 @@ private:
   agui::Frame       commandLine;
   agui::TextField*  commandField = nullptr;
   std::string       sent;
-  // Right of Start: a button for each of Game::CHECKPOINTS, once reached.
-  std::vector<agui::Button*> checkpoints;
-  int               startingWave = 1;
+  // Right of Start: a button for each checkpoint reached, in rows of a few.
+  agui::VerticalFlow* checkpoints     = nullptr;
+  int                 checkpointsShown = 0;
+  int                 startingWave     = 1;
+  // A new round, at wave `wave`.
+  void startAt(int wave);
   agui::EmptyWidget dimmer;
   agui::Window      gamePause;
   agui::Window      gobanPause;

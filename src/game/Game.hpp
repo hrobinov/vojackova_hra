@@ -55,8 +55,7 @@ struct Game {
   // How many times each of UPGRADES has been bought.
   std::array<int, std::size(UPGRADES)> bought{};
 
-  // What UPGRADES[i] costs now; nothing once it has been bought as many
-  // times as it can be.
+  // What UPGRADES[i] costs now. Never nothing: it is never sold out.
   std::optional<int> price(size_t i) const;
 
   // Buys UPGRADES[i] for the figure, if it is still sold and the money is
@@ -67,10 +66,11 @@ struct Game {
   // False if it isn't -- and anything else does nothing.
   bool enterPassword(std::string_view typed);
 
-  // The furthest wave any round has got to. Once it is as far as one of
-  // CHECKPOINTS, a round can start there, straight from the game's menu.
+  // The furthest wave any round has got to. Every wave a whole number of
+  // CHECKPOINT_EVERY it has got to, a round can start at, straight from the
+  // game's menu.
   int furthestWave = 1;
-  static constexpr int CHECKPOINTS[] = { 5, 10 };
+  static constexpr int CHECKPOINT_EVERY = 5;
 
   // The round being played, from the last Start.
   Goban goban;
