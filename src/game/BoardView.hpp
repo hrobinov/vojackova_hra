@@ -1,7 +1,7 @@
 // Draws the goban: a square of Goban::SIZE x Goban::SIZE squares in the
 // middle of the window, as big as fits with a margin round it, the square in
 // its middle red, and the figure and the white zombies on their squares,
-// each with its lives in it.
+// each with its lives in it -- the figure with what is left of its turn too.
 
 #pragma once
 

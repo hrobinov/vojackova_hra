@@ -82,12 +82,15 @@ std::optional<Game> Game::Load(const std::filesystem::path& path)
   game.path = path;
   game.name  = ini.getString("game", "name", path.stem().string());
   game.money = std::max(0, ini.getInt("game", "money", 0));
+  game.furthestWave = std::max(1, ini.getInt("game", "furthest-wave", 1));
   // No worse than a new game's figure.
   const Properties start = game.figure;
   game.figure.actions = std::max(start.actions, ini.getInt("figure", "actions", start.actions));
   game.figure.lives   = std::max(start.lives, ini.getInt("figure", "lives", start.lives));
   game.figure.wounds  = std::max(start.wounds, ini.getInt("figure", "wounds", start.wounds));
   game.figure.range   = std::max(start.range, ini.getInt("figure", "range", start.range));
+  game.figure.rockets = std::max(0, ini.getInt("figure", "rockets", 0));
+  game.figure.shells  = std::max(0, ini.getInt("figure", "shells", 0));
   for (size_t i = 0; i < std::size(UPGRADES); ++i) {
     game.bought[i] = std::clamp(ini.getInt("shop", UPGRADES[i].key, 0), 0, int(UPGRADES[i].prices.size()));
   }
@@ -131,10 +134,13 @@ bool Game::save() const
   ini.set("game", "name", this->name);
   ini.set("game", "saved", std::to_string(std::time(nullptr)));
   ini.setInt("game", "money", this->money);
+  ini.setInt("game", "furthest-wave", this->furthestWave);
   ini.setInt("figure", "actions", this->figure.actions);
   ini.setInt("figure", "lives", this->figure.lives);
   ini.setInt("figure", "wounds", this->figure.wounds);
   ini.setInt("figure", "range", this->figure.range);
+  ini.setInt("figure", "rockets", this->figure.rockets);
+  ini.setInt("figure", "shells", this->figure.shells);
   for (size_t i = 0; i < std::size(UPGRADES); ++i) ini.setInt("shop", UPGRADES[i].key, this->bought[i]);
   ini.setInt("board", "size", SIZE);
   for (int row = 0; row < SIZE; ++row) {

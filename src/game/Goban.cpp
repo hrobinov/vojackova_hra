@@ -17,16 +17,18 @@ int Sign(int value)
 
 }  // namespace
 
-void Goban::start(const Properties& figureStarts, const Properties& zombieStarts)
+void Goban::start(const Properties& figureStarts, const Properties& zombieStarts, int firstWave)
 {
   this->figureProperties  = figureStarts;
   this->zombieProperties  = zombieStarts;
   this->figure            = FIGURE_START;
   this->lives             = figureStarts.lives;
+  this->rockets           = figureStarts.rockets;
+  this->shells            = figureStarts.shells;
   this->figureActionsLeft = figureStarts.actions;
   this->zombieActionsLeft = 0;
   this->earned            = 0;
-  this->spawn(1);
+  this->spawn(firstWave);
 }
 
 void Goban::move(int dx, int dy)
@@ -43,16 +45,63 @@ void Goban::shoot(Position at)
   if (this->figureActionsLeft == 0) return;
   const auto target = std::find_if(this->horde.begin(), this->horde.end(), [at](const Zombie& z) { return z.at == at; });
   if (target == this->horde.end()) return;
-  // In a straight line, and no further than the pistol reaches.
-  const int dx = std::abs(at.x - this->figure.x);
-  const int dy = std::abs(at.y - this->figure.y);
-  if ((dx != 0 && dy != 0) || dx + dy > this->figureProperties.range) return;
+  // In a straight line, no further than the pistol reaches -- or across a
+  // corner, but only right beside the figure.
+  const int  dx       = std::abs(at.x - this->figure.x);
+  const int  dy       = std::abs(at.y - this->figure.y);
+  const bool straight = (dx == 0 || dy == 0) && dx + dy <= this->figureProperties.range;
+  const bool corner   = dx == 1 && dy == 1;
+  if (!straight && !corner) return;
 
   target->lives -= this->figureProperties.wounds;
-  if (target->lives <= 0) {
-    this->horde.erase(target);
-    this->earned += ZOMBIE_REWARD;
+  this->afterHit();
+}
+
+bool Goban::fireRocket(Position at)
+{
+  if (this->figureActionsLeft == 0 || this->rockets == 0 || !OnGoban(at)) return false;
+  --this->rockets;
+  for (Zombie& zombie : this->horde) {
+    if (std::abs(zombie.at.x - at.x) <= 1 && std::abs(zombie.at.y - at.y) <= 1) zombie.lives -= ROCKET_WOUNDS;
   }
+  this->afterHit();
+  return true;
+}
+
+std::optional<std::array<Position, 3>> Goban::ShotgunSpread(Position figure, Position at)
+{
+  // The eight squares round the figure, going round.
+  constexpr Position RING[] = { { 0, -1 }, { 1, -1 }, { 1, 0 }, { 1, 1 }, { 0, 1 }, { -1, 1 }, { -1, 0 }, { -1, -1 } };
+  const Position offset{ at.x - figure.x, at.y - figure.y };
+  for (int i = 0; i < 8; ++i) {
+    if (RING[i] != offset) continue;
+    const auto square = [&](int j) {
+      const Position& o = RING[(j + 8) % 8];
+      return Position{ figure.x + o.x, figure.y + o.y };
+    };
+    return std::array<Position, 3>{ square(i - 1), square(i), square(i + 1) };
+  }
+  return std::nullopt;
+}
+
+bool Goban::fireShotgun(Position at)
+{
+  if (this->figureActionsLeft == 0 || this->shells == 0) return false;
+  const std::optional<std::array<Position, 3>> spread = ShotgunSpread(this->figure, at);
+  if (!spread) return false;
+  --this->shells;
+  for (Zombie& zombie : this->horde) {
+    if (std::find(spread->begin(), spread->end(), zombie.at) != spread->end()) zombie.lives -= SHOTGUN_WOUNDS;
+  }
+  this->afterHit();
+  return true;
+}
+
+void Goban::afterHit()
+{
+  const size_t before = this->horde.size();
+  std::erase_if(this->horde, [](const Zombie& zombie) { return zombie.lives <= 0; });
+  this->earned += int(before - this->horde.size()) * ZOMBIE_REWARD;
   // The last of the wave: the figure back in the middle for the next, and
   // with the whole of a turn before it.
   if (this->horde.empty()) {

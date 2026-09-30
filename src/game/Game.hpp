@@ -1,6 +1,6 @@
 // A game: its name, the properties of its figure and its zombies, its money
-// and what it has bought with it, the goban being played, and the save it
-// lives in between runs. What happens on the
+// and what it has bought with it, how far it has got, the goban being
+// played, and the save it lives in between runs. What happens on the
 // goban isn't saved: every Start begins it anew (see Goban).
 //
 // Saves are INI files, one per game, in %APPDATA%\VojackovaHra\saves\ (next
@@ -45,9 +45,9 @@ struct Game {
   // has been spent.
   int money = 0;
 
-  // The secret password of the game's menu, and what typing it earns.
+  // The secret password -- typed into the line F3 opens -- and what it earns.
   static constexpr std::string_view SECRET_PASSWORD = "magorie1";
-  static constexpr int              SECRET_REWARD   = 1000;
+  static constexpr int              SECRET_REWARD   = 100000;
 
   // How many times each of UPGRADES has been bought.
   std::array<int, std::size(UPGRADES)> bought{};
@@ -60,9 +60,14 @@ struct Game {
   // there. False if not.
   bool buy(size_t i);
 
-  // `typed` into the secret password's field: the reward if it is the
-  // password. False if it isn't.
+  // `typed` into the line F3 opens: the reward if it is the secret password.
+  // False if it isn't -- and anything else does nothing.
   bool enterPassword(std::string_view typed);
+
+  // The furthest wave any round has got to. Once it is as far as one of
+  // CHECKPOINTS, a round can start there, straight from the game's menu.
+  int furthestWave = 1;
+  static constexpr int CHECKPOINTS[] = { 5, 10 };
 
   // The round being played, from the last Start.
   Goban goban;

@@ -11,6 +11,8 @@
 #include <Agui/Widget/Label.hpp>
 #include <Agui/Widget/TextField.hpp>
 
+#include <algorithm>
+
 namespace ui {
 
 namespace {
@@ -18,8 +20,11 @@ namespace {
 // How far the game menu's windows and the round's lives and earnings are
 // from the corner, and the windows apart.
 constexpr int CORNER_GAP = 16;
-// How wide the secret password's field is.
-constexpr int PASSWORD_W = 140;
+// How wide the command line F3 opens is.
+constexpr int COMMAND_W = 420;
+// How big Start is; each checkpoint beside it is as tall and half as wide.
+constexpr int START_W = 160;
+constexpr int START_H = 50;  // menu_button's height
 
 }  // namespace
 
@@ -54,10 +59,14 @@ MainMenu::MainMenu(agui::Gui& gui, Theme& theme, const ::Settings& live)
                  [this] { this->open(Page::LoadGame); })
     , about(theme, [this] { this->open(Page::Menu); })
     , game(agui::GuiDirection::Vertical, &theme.menuFrame, agui::Window::HeightRule::MaxScreenHeightWithExtraSpace)
-    , figure(theme, "Základní vlastnosti panáčka")
-    , zombie(theme, "Základní vlastnosti bílého zombíka")
+    , figure(theme, "Základní vlastnosti panáčka", true)
+    , zombie(theme, "Základní vlastnosti bílého zombíka", false)
     , round(agui::GuiDirection::Vertical, &theme.insideShallowFrameWithPadding)
     , money(agui::GuiDirection::Vertical, "Peníze")
+    , waveTitle(std::string(), &theme.headingLabel)
+    , specialBox(agui::GuiDirection::Vertical, &theme.insideShallowFrameWithPadding)
+    , specialTitle(std::string("Speciální schopnosti"), &theme.headingLabel)
+    , commandLine(agui::GuiDirection::Vertical, &theme.insideShallowFrameWithPadding)
     , gamePause(agui::GuiDirection::Vertical, &theme.menuFrame, agui::Window::HeightRule::MaxScreenHeightWithExtraSpace)
     , gobanPause(agui::GuiDirection::Vertical, &theme.menuFrame, agui::Window::HeightRule::MaxScreenHeightWithExtraSpace)
 {
@@ -78,20 +87,25 @@ MainMenu::MainMenu(agui::Gui& gui, Theme& theme, const ::Settings& live)
   buttons << agui::button("Konec", &this->window, [this] { this->pending = Action::Quit; }, &theme.menuButton);
   this->window << buttons;
 
-  // The game's menu: the secret password, and Start.
-  const auto submitPassword = [this] { this->pending = Action::EnterPassword; };
-  this->passwordField = &make<agui::TextField>();
-  this->passwordField->style.setMinimalWidth(PASSWORD_W);
-  this->passwordField->style.setMaximalWidth(PASSWORD_W);
-  this->passwordField->onConfirm(this, submitPassword);
-  agui::HorizontalFlow& secret = row(8);
-  secret << agui::label("Tajné heslo:") << *this->passwordField << agui::button("OK", &this->game, submitPassword);
+  // The game's menu: Start, with the checkpoints reached beside it.
   agui::VerticalFlow& gameButtons = column(8);
-  gameButtons << secret;
-  gameButtons << agui::button("Start", &this->game, [this] {
-    this->pending = Action::StartGoban;
+  const auto startAt = [this](int wave) {
+    this->startingWave = wave;
+    this->pending      = Action::StartGoban;
     this->open(Page::Goban);
-  }, &theme.continueButton);
+  };
+  agui::HorizontalFlow& starts = row(8);
+  starts << footerButton("Start", &this->game, [startAt] { startAt(1); }, &theme.continueButton, START_W);
+  for (int wave : ::Game::CHECKPOINTS) {
+    const std::string text = "Kolo " + std::to_string(wave);
+    // As tall as Start and half as wide: a plain button rather than a big one.
+    agui::Button& checkpoint = footerButton(text.c_str(), &this->game, [startAt, wave] { startAt(wave); }, nullptr, START_W / 2);
+    checkpoint.style.setMinimalHeight(START_H);
+    checkpoint.style.setMaximalHeight(START_H);
+    this->checkpoints.push_back(&checkpoint);
+    starts << checkpoint;
+  }
+  gameButtons << starts;
   this->game << gameButtons;
 
   agui::VerticalFlow& gamePauseButtons = column(8);
@@ -109,8 +123,30 @@ MainMenu::MainMenu(agui::Gui& gui, Theme& theme, const ::Settings& live)
   this->gobanPause << gobanPauseButtons;
 
   this->livesText    = &agui::label("", &theme.headingLabel);
+  this->actionsText  = &agui::label("");
   this->earningsText = &agui::label("");
-  this->round << *this->livesText << *this->earningsText;
+  this->round << *this->livesText << *this->actionsText << *this->earningsText;
+
+  this->specials[0] = { Special::Rocket, "Rakety", "Aktivovat raketu", "Klikni na cíl" };
+  this->specials[1] = { Special::Shotgun, "Brokovnice", "Aktivovat brokovnici", "Klikni vedle sebe" };
+  agui::VerticalFlow& specialRows = column(12);
+  for (SpecialRow& special : this->specials) {
+    special.text   = &agui::label("", &theme.headingLabel);
+    special.button = &agui::button(std::string(special.ready), &this->specialBox, [this, &special] {
+      // Pressed again, put back; otherwise readied, and any other put back.
+      const bool again = this->armed == special.special;
+      this->disarm();
+      if (!again) {
+        this->armed = special.special;
+        special.button->setText(std::string(special.aim));
+      }
+    });
+    special.button->style.setHorizontallyStretchable(true);
+    special.row = &column(4);
+    *special.row << *special.text << *special.button;
+    specialRows << *special.row;
+  }
+  this->specialBox << specialRows;
 
   // As wide as the properties under it.
   agui::Frame& moneyPanel = make<agui::Frame>(agui::GuiDirection::Vertical, &theme.insideShallowFrameWithPadding);
@@ -126,6 +162,17 @@ MainMenu::MainMenu(agui::Gui& gui, Theme& theme, const ::Settings& live)
     }));
   }
 
+  this->commandField = &make<agui::TextField>();
+  this->commandField->style.setMinimalWidth(COMMAND_W);
+  this->commandField->style.setMaximalWidth(COMMAND_W);
+  this->commandField->onConfirm(this, [this] {
+    this->sent    = this->commandField->getText();
+    this->pending = Action::Command;
+    this->toggleCommandLine();
+  });
+  this->commandLine << *this->commandField;
+  this->commandLine.setVisible(false);
+
   this->dimmer.style.setParent(&theme.dimmer);
 
   gui.add(&this->window);
@@ -139,19 +186,27 @@ MainMenu::MainMenu(agui::Gui& gui, Theme& theme, const ::Settings& live)
   gui.add(&this->zombie);
   gui.add(&this->money);
   for (const auto& upgrade : this->shop) gui.add(upgrade.get());
+  gui.add(&this->specialTitle);
   gui.add(&this->round);
+  gui.add(&this->waveTitle);
+  gui.add(&this->specialBox);
   gui.add(&this->dimmer);  // before the pause menus, so they aren't dimmed too
   gui.add(&this->gamePause);
   gui.add(&this->gobanPause);
+  gui.add(&this->commandLine);
   this->open(Page::Menu);
 }
 
 MainMenu::~MainMenu()
 {
+  this->gui.remove(&this->commandLine);
   this->gui.remove(&this->gobanPause);
   this->gui.remove(&this->gamePause);
   this->gui.remove(&this->dimmer);
+  this->gui.remove(&this->specialBox);
+  this->gui.remove(&this->waveTitle);
   this->gui.remove(&this->round);
+  this->gui.remove(&this->specialTitle);
   for (const auto& upgrade : this->shop) this->gui.remove(upgrade.get());
   this->gui.remove(&this->money);
   this->gui.remove(&this->zombie);
@@ -168,7 +223,6 @@ MainMenu::~MainMenu()
 void MainMenu::play(const ::Game& played)
 {
   for (agui::Window* titled : { &this->game, &this->gamePause, &this->gobanPause }) titled->title.setText(std::string(played.name));
-  this->clearPassword();
   this->showGame(played);
   this->open(Page::Game);
 }
@@ -179,20 +233,64 @@ void MainMenu::showGame(const ::Game& shown)
   this->zombie.show(shown.zombie);
   this->moneyText->setText(std::to_string(shown.money) + " Kč");
   for (size_t i = 0; i < this->shop.size(); ++i) this->shop[i]->show(shown.price(i), shown.money);
+  for (size_t i = 0; i < this->checkpoints.size(); ++i) {
+    this->checkpoints[i]->setVisible(shown.furthestWave >= ::Game::CHECKPOINTS[i]);
+  }
 }
 
-std::string MainMenu::password() const
+void MainMenu::toggleCommandLine()
 {
-  return this->passwordField->getText();
+  const bool opening = !this->commandLine.isVisible();
+  this->commandField->setText(std::string());
+  this->commandLine.setVisible(opening);
+  if (opening) {
+    this->commandLine.bringToFront();
+    this->commandField->focus();
+  } else {
+    this->gui.clearFocus();
+  }
 }
 
-void MainMenu::clearPassword()
+bool MainMenu::commandLineOpen() const
 {
-  this->passwordField->setText(std::string());
+  return this->commandLine.isVisible();
 }
 
-void MainMenu::showRound(int lives, int earnings)
+void MainMenu::disarm()
 {
+  this->armed = Special::None;
+  for (SpecialRow& special : this->specials) special.button->setText(std::string(special.ready));
+}
+
+void MainMenu::showRound(const Goban& goban)
+{
+  const int wave     = goban.waveNumber();
+  const int lives    = goban.figureLives();
+  const int earnings = goban.earnings();
+  if (goban.figureActions() != this->actionsShown) {
+    this->actionsShown = goban.figureActions();
+    this->actionsText->setText("Akce: " + std::to_string(this->actionsShown));
+  }
+  // A special ability only once the figure has one at all, the box only with
+  // any; a button only with some left this round.
+  bool any = false;
+  for (SpecialRow& special : this->specials) {
+    const bool rocket = special.special == Special::Rocket;
+    const int  left   = rocket ? goban.rocketsLeft() : goban.shellsLeft();
+    const int  owned  = rocket ? goban.figureStart().rockets : goban.figureStart().shells;
+    special.row->setVisible(owned > 0);
+    any = any || owned > 0;
+    if (left == special.shown) continue;
+    special.shown = left;
+    special.text->setText(std::string(special.name) + ": " + std::to_string(left));
+    special.button->setEnabled(left > 0);
+    if (left == 0 && this->armed == special.special) this->disarm();
+  }
+  this->specialBox.setVisible(any && this->gobanShown());
+  if (wave != this->waveShown) {
+    this->waveShown = wave;
+    this->waveTitle.setText("Kolo: " + std::to_string(wave));
+  }
   if (lives != this->livesShown) {
     this->livesShown = lives;
     this->livesText->setText(std::to_string(lives) + " HP");
@@ -208,6 +306,8 @@ void MainMenu::open(Page p)
 {
   this->page     = p;
   this->recentre = true;
+  // Back in the main menu, no game is open to type to.
+  if (p == Page::Menu && this->commandLineOpen()) this->toggleCommandLine();
   this->window.setVisible(p == Page::Menu);
   this->newGame.root().setVisible(p == Page::NewGame);
   this->loadGame.root().setVisible(p == Page::LoadGame);
@@ -220,7 +320,13 @@ void MainMenu::open(Page p)
   this->zombie.setVisible(p == Page::Game || p == Page::GamePause);
   this->money.setVisible(p == Page::Game || p == Page::GamePause);
   for (const auto& upgrade : this->shop) upgrade->setVisible(p == Page::Game || p == Page::GamePause);
+  this->specialTitle.setVisible(p == Page::Game || p == Page::GamePause);
   this->round.setVisible(p == Page::Goban || p == Page::GobanPause);
+  this->waveTitle.setVisible(p == Page::Goban || p == Page::GobanPause);
+  if (p != Page::Goban && p != Page::GobanPause) {
+    this->specialBox.setVisible(false);
+    this->disarm();
+  }
   this->dimmer.setVisible(p == Page::GamePause || p == Page::GobanPause);
   this->gamePause.setVisible(p == Page::GamePause);
   this->gobanPause.setVisible(p == Page::GobanPause);
@@ -235,6 +341,10 @@ void MainMenu::open(Page p)
 
 void MainMenu::cancel()
 {
+  if (this->commandLineOpen()) {
+    this->toggleCommandLine();
+    return;
+  }
   if (this->page == Page::Settings && this->settings.searchBar().clearAndHide()) return;
   switch (this->page) {
   case Page::Game:       this->open(Page::GamePause); break;
@@ -293,11 +403,24 @@ void MainMenu::layout(int screenWidth, int screenHeight)
     }
   }
 
-  // The shop from the top left corner along the top, a little way in.
-  int shopLeft = CORNER_GAP;
-  for (const auto& upgrade : this->shop) {
-    upgrade->setLocation(shopLeft, CORNER_GAP);
-    shopLeft += upgrade->getWidth() + CORNER_GAP;
+  // The command line in the bottom left corner.
+  this->commandLine.setLocation(CORNER_GAP, screenHeight - this->commandLine.getHeight() - CORNER_GAP);
+
+  // The shop from the top left corner, a little way in: the upgrades along
+  // the top, and under them down the left, headed, the special abilities.
+  int shopLeft = CORNER_GAP, shopBottom = CORNER_GAP;
+  for (size_t i = 0; i < this->shop.size(); ++i) {
+    if (UPGRADES[i].special) continue;
+    this->shop[i]->setLocation(shopLeft, CORNER_GAP);
+    shopLeft += this->shop[i]->getWidth() + CORNER_GAP;
+    shopBottom = std::max(shopBottom, CORNER_GAP + this->shop[i]->getHeight());
+  }
+  this->specialTitle.setLocation(CORNER_GAP, shopBottom + 2 * CORNER_GAP);
+  int specialTop = shopBottom + 2 * CORNER_GAP + this->specialTitle.getHeight() + CORNER_GAP / 2;
+  for (size_t i = 0; i < this->shop.size(); ++i) {
+    if (!UPGRADES[i].special) continue;
+    this->shop[i]->setLocation(CORNER_GAP, specialTop);
+    specialTop += this->shop[i]->getHeight() + CORNER_GAP;
   }
 
   // The lives and earnings in the gap right of the goban: across, half way
@@ -307,6 +430,15 @@ void MainMenu::layout(int screenWidth, int screenHeight)
   // Where the gap is too narrow, in the corner.
   if (this->round.isVisible()) {
     const BoardLayout goban = LayOutBoard(screenWidth, screenHeight);
+    // The special abilities the same way in the gap left of it.
+    if (goban.left >= this->specialBox.getWidth() + 2 * CORNER_GAP) {
+      this->specialBox.setLocation((goban.left - this->specialBox.getWidth()) / 2, goban.top);
+    } else {
+      this->specialBox.setLocation(CORNER_GAP, CORNER_GAP);
+    }
+    // The wave in the middle of the gap over the goban.
+    this->waveTitle.setLocation((screenWidth - this->waveTitle.getWidth()) / 2,
+                                std::max(0, (goban.top - this->waveTitle.getHeight()) / 2));
     const int gapLeft = goban.left + goban.side;
     const int gap     = screenWidth - gapLeft;
     if (gap >= this->round.getWidth() + 2 * CORNER_GAP) {

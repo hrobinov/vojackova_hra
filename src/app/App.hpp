@@ -6,6 +6,7 @@
 #pragma once
 
 #include <app/Settings.hpp>
+#include <game/Explosions.hpp>
 #include <game/Game.hpp>
 #include <ui/GuiLayer.hpp>
 
@@ -57,6 +58,7 @@ private:
   std::optional<Game> game;
   float zombieWait = 0.0f;  // seconds since the zombie's last step
   float deathWait  = 0.0f;  // seconds the figure has been dead, on the goban
+  Explosions explosions;    // the rockets going off on the goban
 
   bool quitRequested = false;
 };

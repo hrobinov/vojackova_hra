@@ -6,6 +6,9 @@
 #include <ui/MainMenu.hpp>
 
 #include <raylib.h>
+#include <rlgl.h>
+
+#include <algorithm>
 
 App::Window::Window(const Settings& settings)
 {
@@ -58,12 +61,27 @@ void App::frame()
   } else {
     this->deathWait = 0.0f;
   }
-  if (this->game) this->gui.menu().showRound(this->game->goban.figureLives(), this->game->goban.earnings());
+  // How far the game has got, kept -- and saved -- with the earnings.
+  if (this->game) this->game->furthestWave = std::max(this->game->furthestWave, this->game->goban.waveNumber());
+  if (this->game) this->gui.menu().showRound(this->game->goban);
   if (WindowShouldClose()) this->quitRequested = true;
+
+  // Explosions only while the goban is there to show them.
+  if (this->gui.menu().gobanShown()) this->explosions.update(GetFrameTime());
+  else                               this->explosions.clear();
 
   BeginDrawing();
   ClearBackground(cfg::BACKGROUND_COLOR);
-  if (this->game && this->gui.menu().gobanShown()) DrawBoard(this->game->goban, GetScreenWidth(), GetScreenHeight());
+  if (this->game && this->gui.menu().gobanShown()) {
+    // The goban and the explosions on it, shaken as a rocket goes off.
+    const BoardLayout goban = LayOutBoard(GetScreenWidth(), GetScreenHeight());
+    const Vector2     shake = this->explosions.shake(goban);
+    rlPushMatrix();
+    rlTranslatef(shake.x, shake.y, 0.0f);
+    DrawBoard(this->game->goban, GetScreenWidth(), GetScreenHeight());
+    this->explosions.draw(goban);
+    rlPopMatrix();
+  }
   this->gui.draw();
   EndDrawing();
 }
@@ -72,11 +90,14 @@ void App::handleKeys()
 {
   ui::MainMenu& menu = this->gui.menu();
   if (IsKeyPressed(KEY_ESCAPE)) menu.cancel();
+  // F3 opens the command line, with a game to type to.
+  if (IsKeyPressed(KEY_F3) && this->game) menu.toggleCommandLine();
 
   // The arrow keys, or W A S D, move the figure, a square a press -- and on
   // and on while one is held, as a key held in a text field repeats. Not
-  // while paused; while the zombies move, Goban::move() does nothing.
-  if (this->game && menu.current() == ui::MainMenu::Page::Goban) {
+  // while paused, nor while typing into the command line; while the zombies
+  // move, Goban::move() does nothing.
+  if (this->game && menu.current() == ui::MainMenu::Page::Goban && !menu.commandLineOpen()) {
     const auto pressed = [](int arrow, int letter) {
       return IsKeyPressed(arrow) || IsKeyPressedRepeat(arrow) || IsKeyPressed(letter) || IsKeyPressedRepeat(letter);
     };
@@ -87,15 +108,37 @@ void App::handleKeys()
     // Space waits. Only on a press: held, it would throw the turn away.
     if (IsKeyPressed(KEY_SPACE)) this->game->goban.wait();
 
-    // A click on a square shoots at it -- which only does anything on the
-    // zombie, in range.
+    // A click on a square shoots at it -- which only does anything on a
+    // zombie, in range -- or with a special ability readied, uses that: a
+    // rocket anywhere, the shotgun right beside the figure. It is gone for
+    // this round; the next Start has it back.
     if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
       const BoardLayout goban = LayOutBoard(GetScreenWidth(), GetScreenHeight());
       const Vector2     mouse = GetMousePosition();
       const int         x     = int(mouse.x) - goban.left;
       const int         y     = int(mouse.y) - goban.top;
       if (x >= 0 && y >= 0 && x < goban.side && y < goban.side) {
-        this->game->goban.shoot(Position{ x / goban.square, y / goban.square });
+        const Position at{ x / goban.square, y / goban.square };
+        Goban& round = this->game->goban;
+        switch (menu.readied()) {
+        case ui::MainMenu::Special::None:
+          round.shoot(at);
+          break;
+        case ui::MainMenu::Special::Rocket:
+          if (round.fireRocket(at)) {
+            menu.disarm();
+            this->explosions.addRocket(at);
+          }
+          break;
+        case ui::MainMenu::Special::Shotgun: {
+          const Position from = round.figureAt();
+          if (round.fireShotgun(at)) {
+            menu.disarm();
+            this->explosions.addShotgun(from, *Goban::ShotgunSpread(from, at));
+          }
+          break;
+        }
+        }
       }
     }
   }
@@ -120,8 +163,8 @@ void App::handleMenu()
     else TraceLog(LOG_WARNING, "GAME: Couldn't read %s", menu.chosenSave().string().c_str());
     break;
   case ui::MainMenu::Action::StartGoban:
-    // From the beginning, every time.
-    if (this->game) this->game->goban.start(this->game->figure, this->game->zombie);
+    // From the beginning, or a checkpoint -- never where the last round was.
+    if (this->game) this->game->goban.start(this->game->figure, this->game->zombie, menu.startWave());
     break;
   case ui::MainMenu::Action::LeaveGoban:
     this->bankEarnings();
@@ -133,12 +176,11 @@ void App::handleMenu()
       menu.showGame(*this->game);
     }
     break;
-  case ui::MainMenu::Action::EnterPassword:
-    if (this->game && this->game->enterPassword(menu.password())) {
+  case ui::MainMenu::Action::Command:
+    if (this->game && this->game->enterPassword(menu.command())) {
       this->game->save();
       menu.showGame(*this->game);
     }
-    menu.clearPassword();
     break;
   case ui::MainMenu::Action::SaveAndQuit:
     if (this->game) this->game->save();

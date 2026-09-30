@@ -22,6 +22,7 @@
 #include <Agui/GenericTargetable.hpp>
 #include <Agui/Widget/EmptyWidget.hpp>
 #include <Agui/Widget/Frame.hpp>
+#include <Agui/Widget/Label.hpp>
 #include <Agui/Widget/Window.hpp>
 
 #include <filesystem>
@@ -32,8 +33,8 @@
 struct Settings;
 
 namespace agui {
+class Button;
 class Gui;
-class Label;
 class TextField;
 }  // namespace agui
 
@@ -49,10 +50,10 @@ public:
     LoadGame,      // a save on the Load game page: load chosenSave()
     SaveSettings,  // Settings' Confirm: keep settings.draft()
     SaveAndQuit,   // the game menu's pause menu: save the game, and back to the main menu
-    StartGoban,    // the game menu's Start: a new round on the goban
+    StartGoban,    // the game menu's Start, or a checkpoint: a new round on the goban, at startWave()
     LeaveGoban,    // the goban's pause menu: back to the game's menu, the round's earnings banked
     BuyUpgrade,    // an upgrade in the shop: buy UPGRADES[boughtUpgrade()]
-    EnterPassword, // the secret password's field confirmed: try password()
+    Command,       // Enter in the line F3 opens: try command()
     Quit,
   };
   // Game is the game's menu, and Goban the goban, which has the screen to
@@ -81,10 +82,16 @@ public:
   // to menu does: when the figure dies.
   void leaveGoban() { this->open(Page::Game); }
 
-  // The figure's lives and the round's earnings, beside the goban. Cheap
-  // when they haven't changed. (The zombies' lives are the game's business,
-  // and not shown.)
-  void showRound(int lives, int earnings);
+  // Round the goban: right of it the figure's lives, what is left of its
+  // turn and the round's earnings; left of it the special abilities it has;
+  // and over it the wave. Cheap when they haven't changed.
+  void showRound(const Goban& goban);
+
+  // The special abilities the buttons left of the goban ready, so the next
+  // click on the goban uses one rather than the pistol; and put back after.
+  enum class Special { None, Rocket, Shotgun };
+  Special readied() const { return this->armed; }
+  void    disarm();
 
 
 
@@ -103,11 +110,17 @@ public:
 
   // What NewGame's game is to be called.
   std::string newGameName() const { return this->newGame.name(); }
+  // The wave StartGoban starts at.
+  int startWave() const { return this->startingWave; }
   // The upgrade BuyUpgrade is for, an index into UPGRADES.
   size_t boughtUpgrade() const { return this->bought; }
-  // What EnterPassword is for; and the field emptied again after.
-  std::string password() const;
-  void        clearPassword();
+  // F3, with a game open: the line at the bottom of the screen to type into,
+  // as a chat's. Enter sends what was typed, as Command, and closes it; so
+  // does F3 again, or Esc, without sending anything.
+  void toggleCommandLine();
+  bool commandLineOpen() const;
+  // What Command is for.
+  std::string command() const { return this->sent; }
   // The save LoadGame is for.
   const std::filesystem::path& chosenSave() const { return this->chosen; }
 
@@ -137,14 +150,42 @@ private:
   agui::Label*      earningsText  = nullptr;
   int               livesShown    = -1;
   int               earningsShown = -1;
+  agui::Label*      actionsText   = nullptr;
+  int               actionsShown  = -1;
+  // Left of the goban, one under another: each special ability the figure
+  // has, how many it has left, and the button that readies one.
+  struct SpecialRow {
+    Special             special = Special::None;
+    const char*         name    = nullptr;  // "Rakety"
+    const char*         ready   = nullptr;  // the button: "Aktivovat raketu"
+    const char*         aim     = nullptr;  // the button once pressed: "Klikni na cíl"
+    agui::VerticalFlow* row     = nullptr;
+    agui::Label*        text    = nullptr;
+    agui::Button*       button  = nullptr;
+    int                 shown   = -1;
+  };
+  agui::Frame       specialBox;
+  SpecialRow        specials[2];
+  Special           armed = Special::None;
+  // Over the goban: which wave it is.
+  agui::Label       waveTitle;
+  int               waveShown = -1;
   // In the game's menu, over the properties: the game's money.
   agui::Window      money;
   agui::Label*      moneyText = nullptr;
-  // In the game's menu, from the top left along the top: the shop, an
-  // upgrade a window. And over Start, the secret password.
+  // In the game's menu: the shop, an upgrade a window -- from the top left
+  // along the top, and under them down the left, headed, the special
+  // abilities.
   std::vector<std::unique_ptr<UpgradeWindow>> shop;
+  agui::Label       specialTitle;
   size_t            bought = 0;
-  agui::TextField*  passwordField = nullptr;
+  // At the bottom of the screen, while F3 has it open: the command line.
+  agui::Frame       commandLine;
+  agui::TextField*  commandField = nullptr;
+  std::string       sent;
+  // Right of Start: a button for each of Game::CHECKPOINTS, once reached.
+  std::vector<agui::Button*> checkpoints;
+  int               startingWave = 1;
   agui::EmptyWidget dimmer;
   agui::Window      gamePause;
   agui::Window      gobanPause;

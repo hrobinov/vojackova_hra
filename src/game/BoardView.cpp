@@ -36,17 +36,30 @@ void DrawBoard(const Goban& goban, int screenWidth, int screenHeight)
   }
 
   // The figure and the zombies, each in the middle of its square (inside the
-  // lines round it).
-  // A small number in each says how many lives it has left.
-  const float middle   = (float(square) + float(line)) / 2.0f;
-  const int   fontSize = std::max(8, int(float(square) * cfg::LIVES_TEXT_SIZE));
-  const auto  dot      = [&](Position at, Color color, int lives, Color textColor) {
-    const Vector2 centre{ float(left + at.x * square) + middle, float(top + at.y * square) + middle };
-    DrawCircleV(centre, float(square) * cfg::DOT_SIZE / 2.0f, color);
-    const std::string text = std::to_string(lives);
-    DrawText(text.c_str(), int(centre.x) - MeasureText(text.c_str(), fontSize) / 2, int(centre.y) - fontSize / 2, fontSize,
-             textColor);
+  // lines round it), with small numbers in it: a zombie's lives; the
+  // figure's lives, and under a line what is left of its turn.
+  const float middle = (float(square) + float(line)) / 2.0f;
+  const float radius = float(square) * cfg::DOT_SIZE / 2.0f;
+  const auto  centre = [&](Position at) {
+    return Vector2{ float(left + at.x * square) + middle, float(top + at.y * square) + middle };
   };
-  for (const Goban::Zombie& zombie : goban.zombies()) dot(zombie.at, cfg::ZOMBIE_COLOR, zombie.lives, cfg::ZOMBIE_TEXT_COLOR);
-  dot(goban.figureAt(), cfg::DOT_COLOR, goban.figureLives(), cfg::DOT_TEXT_COLOR);
+  const auto number = [](int value, int x, int y, int size, Color color) {
+    const std::string text = std::to_string(value);
+    DrawText(text.c_str(), x - MeasureText(text.c_str(), size) / 2, y, size, color);
+  };
+
+  const int zombieText = std::max(8, int(float(square) * cfg::LIVES_TEXT_SIZE));
+  for (const Goban::Zombie& zombie : goban.zombies()) {
+    const Vector2 at = centre(zombie.at);
+    DrawCircleV(at, radius, cfg::ZOMBIE_COLOR);
+    number(zombie.lives, int(at.x), int(at.y) - zombieText / 2, zombieText, cfg::ZOMBIE_TEXT_COLOR);
+  }
+
+  const Vector2 figure     = centre(goban.figureAt());
+  const int     figureText = std::max(6, int(float(square) * cfg::FIGURE_TEXT_SIZE));
+  DrawCircleV(figure, radius, cfg::DOT_COLOR);
+  number(goban.figureLives(), int(figure.x), int(figure.y) - figureText - 1, figureText, cfg::DOT_TEXT_COLOR);
+  DrawLineEx(Vector2{ figure.x - radius * 0.6f, figure.y }, Vector2{ figure.x + radius * 0.6f, figure.y }, 1.0f,
+             cfg::DOT_TEXT_COLOR);
+  number(goban.figureActions(), int(figure.x), int(figure.y) + 2, figureText, cfg::DOT_TEXT_COLOR);
 }
