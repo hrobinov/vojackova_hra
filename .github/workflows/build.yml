@@ -1,0 +1,55 @@
+# Builds the game on every push, on Windows, as fastbuild\build.cmd does on
+# a machine of our own -- the runner has Visual Studio with the C++ tools and
+# the Windows SDK already.
+#
+# The exe it makes (Release: everything it needs is in it) can be downloaded
+# from the run, under Artifacts; and every build of master replaces the
+# "latest" release, so it is always at
+#   https://github.com/hrobinov/vojackova_hra/releases/download/latest/vojackova_hra.exe
+
+name: Build
+
+on:
+  push:
+  workflow_dispatch:
+
+# The release is replaced by each build of master: one at a time.
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build
+        shell: cmd
+        run: fastbuild\build.cmd Release -noprogress
+
+      - name: Keep the exe
+        uses: actions/upload-artifact@v4
+        with:
+          name: vojackova_hra
+          path: build/Release/vojackova_hra.exe
+          if-no-files-found: error
+
+      - name: Publish it as the latest release
+        if: github.ref == 'refs/heads/master'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # There is none the first time.
+          gh release delete latest --yes --cleanup-tag 2>$null
+          $global:LASTEXITCODE = 0
+          $commit = git log -1 --format='%h %s'
+          gh release create latest build/Release/vojackova_hra.exe `
+            --title "Nejnovější verze" `
+            --notes "Sestaveno automaticky z posledního commitu na master: $commit" `
+            --target $env:GITHUB_SHA `
+            --prerelease

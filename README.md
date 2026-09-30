@@ -2,7 +2,15 @@
 
 Tady je hra, co zkouším dělat pomocí AI.
 
-Zatím je hotové jen hlavní menu: **Nová hra** a **Načíst hru** (ty ještě nic nedělají), **Nastavení** (velikost rozhraní a grafika, jako v Go editoru), **O hře** a **Konec**. Nastavení se ukládá do `%APPDATA%\VojackovaHra\config.ini`.
+Voják na mýtině v lese proti vlnám zombíků: chodí se šipkami nebo W A S D, střílí se myší, za zabité zombíky jsou peníze a za ty se v obchodě kupují vylepšení, rakety a brokovnice. Hry se ukládají do `%APPDATA%\VojackovaHra\saves`, nastavení do `%APPDATA%\VojackovaHra\config.ini`.
+
+## Stažení
+
+Po každém commitu se hra na GitHubu sama sestaví. Nejnovější verze z `master` je vždycky tady:
+
+**[vojackova_hra.exe](https://github.com/hrobinov/vojackova_hra/releases/download/latest/vojackova_hra.exe)**
+
+Stačí ji stáhnout a spustit, nic dalšího nepotřebuje. Sestavení z jiných větví jsou u jednotlivých běhů v [Actions](https://github.com/hrobinov/vojackova_hra/actions) (pod Artifacts).
 
 ## Z čeho je postavená
 
