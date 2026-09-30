@@ -37,9 +37,11 @@ struct Game {
   std::array<std::array<char, SIZE>, SIZE> board;
 
   // The basic properties of the figure, which upgrades bought improve, and
-  // of every white zombie, the same for every game and so not saved.
+  // of every white zombie and every black one, the same for every game and
+  // so not saved.
   Properties figure{ .actions = 2, .lives = 1, .wounds = 1, .range = 3 };
   Properties zombie{ .actions = 2, .lives = 2, .wounds = 1 };
+  Properties blackZombie{ .actions = 3, .lives = 2, .wounds = 1 };
 
   // In Kč: what every round on the goban has earned, added up, less what
   // has been spent.

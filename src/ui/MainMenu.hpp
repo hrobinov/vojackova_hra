@@ -141,9 +141,10 @@ private:
   // and the pause menus, of the game's menu and of the goban.
   agui::Window      game;
   // In the game menu's bottom right corner: the basic properties of the
-  // figure, and over them the white zombie's.
+  // figure, and over them the white zombie's and the black one's.
   PropertiesWindow  figure;
   PropertiesWindow  zombie;
+  PropertiesWindow  blackZombie;
   // Beside the goban: the figure's lives, and the round's earnings.
   agui::Frame       round;
   agui::Label*      livesText     = nullptr;

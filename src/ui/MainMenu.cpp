@@ -61,6 +61,7 @@ MainMenu::MainMenu(agui::Gui& gui, Theme& theme, const ::Settings& live)
     , game(agui::GuiDirection::Vertical, &theme.menuFrame, agui::Window::HeightRule::MaxScreenHeightWithExtraSpace)
     , figure(theme, "Základní vlastnosti panáčka", true)
     , zombie(theme, "Základní vlastnosti bílého zombíka", false)
+    , blackZombie(theme, "Základní vlastnosti černého zombíka", false)
     , round(agui::GuiDirection::Vertical, &theme.insideShallowFrameWithPadding)
     , money(agui::GuiDirection::Vertical, "Peníze")
     , waveTitle(std::string(), &theme.headingLabel)
@@ -184,6 +185,7 @@ MainMenu::MainMenu(agui::Gui& gui, Theme& theme, const ::Settings& live)
   gui.add(&this->game);
   gui.add(&this->figure);
   gui.add(&this->zombie);
+  gui.add(&this->blackZombie);
   gui.add(&this->money);
   for (const auto& upgrade : this->shop) gui.add(upgrade.get());
   gui.add(&this->specialTitle);
@@ -209,6 +211,7 @@ MainMenu::~MainMenu()
   this->gui.remove(&this->specialTitle);
   for (const auto& upgrade : this->shop) this->gui.remove(upgrade.get());
   this->gui.remove(&this->money);
+  this->gui.remove(&this->blackZombie);
   this->gui.remove(&this->zombie);
   this->gui.remove(&this->figure);
   this->gui.remove(&this->game);
@@ -231,6 +234,7 @@ void MainMenu::showGame(const ::Game& shown)
 {
   this->figure.show(shown.figure);
   this->zombie.show(shown.zombie);
+  this->blackZombie.show(shown.blackZombie);
   this->moneyText->setText(std::to_string(shown.money) + " Kč");
   for (size_t i = 0; i < this->shop.size(); ++i) this->shop[i]->show(shown.price(i), shown.money);
   for (size_t i = 0; i < this->checkpoints.size(); ++i) {
@@ -318,6 +322,7 @@ void MainMenu::open(Page p)
   this->game.setVisible(p == Page::Game || p == Page::GamePause);
   this->figure.setVisible(p == Page::Game || p == Page::GamePause);
   this->zombie.setVisible(p == Page::Game || p == Page::GamePause);
+  this->blackZombie.setVisible(p == Page::Game || p == Page::GamePause);
   this->money.setVisible(p == Page::Game || p == Page::GamePause);
   for (const auto& upgrade : this->shop) upgrade->setVisible(p == Page::Game || p == Page::GamePause);
   this->specialTitle.setVisible(p == Page::Game || p == Page::GamePause);
@@ -393,11 +398,12 @@ void MainMenu::layout(int screenWidth, int screenHeight)
   this->dimmer.setSize(screenWidth, screenHeight, agui::SetSizeInfo());
 
   // Up from the bottom right corner, a little way in: the figure's
-  // properties, the zombie's over them, and the money over those.
+  // properties, the white zombie's over them, the black one's over those,
+  // and the money on top.
   if (this->figure.isVisible()) {
     int top = screenHeight;
     for (agui::Window* stacked : { static_cast<agui::Window*>(&this->figure), static_cast<agui::Window*>(&this->zombie),
-                                  &this->money }) {
+                                  static_cast<agui::Window*>(&this->blackZombie), &this->money }) {
       top -= stacked->getHeight() + CORNER_GAP;
       stacked->setLocation(screenWidth - stacked->getWidth() - CORNER_GAP, top);
     }

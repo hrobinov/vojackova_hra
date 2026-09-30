@@ -8,6 +8,9 @@
 #include <app/Settings.hpp>
 #include <game/Explosions.hpp>
 #include <game/Game.hpp>
+#include <game/Scenery.hpp>
+#include <game/Sounds.hpp>
+#include <game/Splatters.hpp>
 #include <ui/GuiLayer.hpp>
 
 #include <optional>
@@ -29,6 +32,16 @@ private:
     Window& operator=(const Window&) = delete;
   };
 
+  // A zombie killed on the goban, to be shown dying -- its body falling, its
+  // puddle, and but for a rocket's, its groan -- once `delay` has run out:
+  // when the rocket that killed it has landed. And the bang of a rocket, as
+  // it lands.
+  struct Dying {
+    Goban::Zombie zombie;
+    float         delay;
+    bool          groans;
+  };
+
   // The interface scale's shortcuts: a step up or down, or back to automatic.
   enum class Scale { Up, Down, Automatic };
 
@@ -37,6 +50,10 @@ private:
   void handleMenu();
   // While it is the zombie's turn on the goban: its actions, one at a time.
   void updateZombie();
+  // The zombies killed since, and the soldier if he has been: bodies,
+  // puddles, groans, his fall and his cry. Killed by a rocket, `delay` till
+  // it lands and without a groan: its bang is enough.
+  void updateDeaths(float delay = 0.0f, bool groans = true);
   // The round's earnings into the game's money, which is saved at once, so
   // it can't be lost. When the goban is left, however it is.
   void bankEarnings();
@@ -59,6 +76,12 @@ private:
   float zombieWait = 0.0f;  // seconds since the zombie's last step
   float deathWait  = 0.0f;  // seconds the figure has been dead, on the goban
   Explosions explosions;    // the rockets going off on the goban
+  Scenery    scenery;       // the forest the goban lies in
+  Splatters  splatters;     // what the dead leave on it
+  Sounds     sounds;
+  std::vector<Dying> dying;
+  std::vector<float> bangs;  // rockets yet to land, how long till they do
+  bool       soldierDown = false;  // his fall begun, and his cry heard
 
   bool quitRequested = false;
 };

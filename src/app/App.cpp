@@ -9,6 +9,8 @@
 #include <rlgl.h>
 
 #include <algorithm>
+#include <cstdlib>
+#include <vector>
 
 App::Window::Window(const Settings& settings)
 {
@@ -18,11 +20,13 @@ App::Window::Window(const Settings& settings)
   // Esc belongs to the menu; closing is the close button's job.
   SetExitKey(KEY_NULL);
   if (settings.window.maximized) MaximizeWindow();
+  InitAudioDevice();
 }
 
 App::Window::~Window()
 {
   ui::UnloadFonts();
+  CloseAudioDevice();
   CloseWindow();
 }
 
@@ -49,6 +53,7 @@ void App::frame()
   this->gui.update();
   this->handleMenu();
   this->updateZombie();
+  this->updateDeaths();
   // With no lives left the figure is dead: after a moment to see it, back to
   // the game's menu, as Back to menu would. The moment waits while paused.
   if (this->game && this->game->goban.figureLives() == 0 && this->gui.menu().gobanShown()) {
@@ -66,19 +71,31 @@ void App::frame()
   if (this->game) this->gui.menu().showRound(this->game->goban);
   if (WindowShouldClose()) this->quitRequested = true;
 
-  // Explosions only while the goban is there to show them.
-  if (this->gui.menu().gobanShown()) this->explosions.update(GetFrameTime());
-  else                               this->explosions.clear();
+  // Explosions and puddles only while the goban is there to show them.
+  if (this->gui.menu().gobanShown()) {
+    this->explosions.update(GetFrameTime());
+    this->splatters.update(GetFrameTime());
+  } else {
+    this->explosions.clear();
+    this->splatters.clear();
+    this->dying.clear();
+    this->bangs.clear();
+  }
 
   BeginDrawing();
   ClearBackground(cfg::BACKGROUND_COLOR);
   if (this->game && this->gui.menu().gobanShown()) {
-    // The goban and the explosions on it, shaken as a rocket goes off.
+    // The forest, the goban and the explosions on it, shaken as a rocket
+    // goes off.
+    this->scenery.prepare(GetScreenWidth(), GetScreenHeight());
     const BoardLayout goban = LayOutBoard(GetScreenWidth(), GetScreenHeight());
     const Vector2     shake = this->explosions.shake(goban);
     rlPushMatrix();
     rlTranslatef(shake.x, shake.y, 0.0f);
-    DrawBoard(this->game->goban, GetScreenWidth(), GetScreenHeight());
+    this->scenery.draw();
+    this->splatters.draw(goban);
+    const float fallen = this->soldierDown ? std::min(1.0f, this->deathWait / cfg::FALL_SECONDS) : 0.0f;
+    DrawBoard(this->game->goban, GetScreenWidth(), GetScreenHeight(), fallen);
     this->explosions.draw(goban);
     rlPopMatrix();
   }
@@ -122,19 +139,35 @@ void App::handleKeys()
         Goban& round = this->game->goban;
         switch (menu.readied()) {
         case ui::MainMenu::Special::None:
-          round.shoot(at);
-          break;
-        case ui::MainMenu::Special::Rocket:
-          if (round.fireRocket(at)) {
-            menu.disarm();
-            this->explosions.addRocket(at);
+          if (round.shoot(at)) {
+            this->sounds.pistol();
+            this->updateDeaths();
           }
           break;
+        case ui::MainMenu::Special::Rocket: {
+          // The zombies it will kill, to be shown till it lands.
+          std::vector<Goban::Zombie> doomed;
+          for (const Goban::Zombie& zombie : round.zombies()) {
+            if (std::abs(zombie.at.x - at.x) <= 1 && std::abs(zombie.at.y - at.y) <= 1 && zombie.lives <= Goban::ROCKET_WOUNDS) {
+              doomed.push_back(zombie);
+            }
+          }
+          const Position from = round.figureAt();
+          if (round.fireRocket(at)) {
+            menu.disarm();
+            this->explosions.addRocket(from, at, std::move(doomed));
+            this->bangs.push_back(Explosions::FlightTime(from, at));
+            this->updateDeaths(Explosions::FlightTime(from, at), false);
+          }
+          break;
+        }
         case ui::MainMenu::Special::Shotgun: {
           const Position from = round.figureAt();
           if (round.fireShotgun(at)) {
             menu.disarm();
             this->explosions.addShotgun(from, *Goban::ShotgunSpread(from, at));
+            this->sounds.shotgun();
+            this->updateDeaths();
           }
           break;
         }
@@ -164,7 +197,7 @@ void App::handleMenu()
     break;
   case ui::MainMenu::Action::StartGoban:
     // From the beginning, or a checkpoint -- never where the last round was.
-    if (this->game) this->game->goban.start(this->game->figure, this->game->zombie, menu.startWave());
+    if (this->game) this->game->goban.start(this->game->figure, this->game->zombie, this->game->blackZombie, menu.startWave());
     break;
   case ui::MainMenu::Action::LeaveGoban:
     this->bankEarnings();
@@ -208,6 +241,39 @@ void App::bankEarnings()
   this->gui.menu().showGame(*this->game);
 }
 
+void App::updateDeaths(float delay, bool groans)
+{
+  if (!this->game) return;
+  for (const Goban::Zombie& zombie : this->game->goban.takeDeaths()) this->dying.push_back({ zombie, delay, groans });
+  // Only as time goes on -- not again as a rocket is fired, in the same frame.
+  if (delay > 0.0f) return;
+
+  // The rockets landing.
+  for (float& bang : this->bangs) bang -= GetFrameTime();
+  std::erase_if(this->bangs, [this](float bang) {
+    if (bang > 0.0f) return false;
+    this->sounds.explosion();
+    return true;
+  });
+  // Those whose time has come fall, facing the soldier as they did.
+  const Position soldier = this->game->goban.figureAt();
+  for (Dying& death : this->dying) death.delay -= GetFrameTime();
+  std::erase_if(this->dying, [this, soldier](const Dying& death) {
+    if (death.delay > 0.0f) return false;
+    this->splatters.addBody(death.zombie, Facing(death.zombie.at, soldier));
+    if (death.groans) this->sounds.zombieDies(death.zombie.kind);
+    return true;
+  });
+
+  // The soldier, once, as he dies: down he goes.
+  const bool dead = this->gui.menu().gobanShown() && this->game->goban.figureLives() == 0;
+  if (dead && !this->soldierDown) {
+    this->splatters.add(this->game->goban.figureAt(), Splatters::SOLDIER);
+    this->sounds.soldierDies();
+  }
+  this->soldierDown = dead;
+}
+
 void App::updateZombie()
 {
   // An action every ZOMBIE_STEP_SECONDS, the first one too, so the figure's last
@@ -220,7 +286,10 @@ void App::updateZombie()
   this->zombieWait += GetFrameTime();
   if (this->zombieWait < cfg::ZOMBIE_STEP_SECONDS) return;
   this->zombieWait -= cfg::ZOMBIE_STEP_SECONDS;
+  // A blow landed, heard.
+  const int before = this->game->goban.figureLives();
   this->game->goban.zombieAction();
+  if (this->game->goban.figureLives() < before) this->sounds.soldierHit();
 }
 
 void App::play(Game started)

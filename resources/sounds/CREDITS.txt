@@ -1,0 +1,21 @@
+The game's sounds, all released under CC0 (public domain) -- no credit is
+required, but here it is:
+
+white_zombie_*, black_zombie_*
+    "Zombies Sound Pack" by artisticdude (zombie-1, 8, 20, 23; 16, 18, 19)
+    https://opengameart.org/content/zombies-sound-pack
+soldier_*
+    "grunts of male death and pain" by thebardofblasphemy (three takes)
+    https://opengameart.org/content/grunts-male-death-and-pain
+explosion
+    "Synthesized explosion" by qubodup
+    https://opengameart.org/content/synthesized-explosion
+pistol, shotgun
+    "Gunshot Sounds" by Tabasco (cz, shotty)
+    https://opengameart.org/content/gunshot-sounds
+punch_*
+    "Impact Sounds" by Kenney (impactPunch_heavy_000-002)
+    https://kenney.nl/assets/impact-sounds
+
+Cut, turned to mono 16-bit, faded out at the end and made as loud as each
+other for the game.

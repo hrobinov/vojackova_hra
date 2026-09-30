@@ -177,6 +177,27 @@ Exec( 'IconSearch' )
   .ExecArguments  = '"%1" "%2" ICON_SEARCH_PNG ui'
 }
 
+// The sounds (resources\sounds; where each comes from is in CREDITS.txt
+// there), each embedded as sounds::<name>, and <name>_SIZE, by the same tool.
+.SoundNames = { 'white_zombie_1', 'white_zombie_2', 'white_zombie_3', 'white_zombie_4',
+                'black_zombie_1', 'black_zombie_2', 'black_zombie_3',
+                'soldier_1', 'soldier_2', 'soldier_3',
+                'explosion', 'pistol', 'shotgun', 'punch_1', 'punch_2', 'punch_3' }
+.SoundFiles   = {}
+.SoundTargets = {}
+ForEach( .Sound in .SoundNames )
+{
+  Exec( 'Sound-$Sound$' )
+  {
+    .ExecExecutable = 'build\tools\Embed.exe'
+    .ExecInput      = 'resources\sounds\$Sound$.wav'
+    .ExecOutput     = 'build\generated\Sound_$Sound$.cpp'
+    .ExecArguments  = '"%1" "%2" $Sound$ sounds'
+  }
+  ^SoundFiles   + 'build\generated\Sound_$Sound$.cpp'
+  ^SoundTargets + 'Sound-$Sound$'
+}
+
 // Agui is a pile of small files that rarely change: compile it as a few
 // unity blobs instead of ~100 separate translation units.
 Unity( 'Agui-Unity' )
@@ -237,9 +258,11 @@ ForEach( .Cfg in .Configs )
                             'build\generated\IconInfo.cpp', 'build\generated\IconReset.cpp',
                             'build\generated\IconResetWhite.cpp', 'build\generated\IconTrash.cpp',
                             'build\generated\IconSearch.cpp' }
+                        + .SoundFiles
     .CompilerOutputPath = '$Out$\obj\game\'
     .PreBuildDependencies = { 'GuiAtlas', 'FontRegular', 'FontSemiBold', 'FontBold',
                               'IconInfo', 'IconReset', 'IconResetWhite', 'IconTrash', 'IconSearch' }
+                          + .SoundTargets
   }
 
   Executable( 'game-$Config$' )

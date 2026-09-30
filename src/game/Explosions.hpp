@@ -1,6 +1,9 @@
 // Rockets and shotgun blasts going off on the goban, drawn over it.
 //
-// A rocket's is a blast over the square it hit and the eight round it: every
+// A rocket first flies from the figure to the square it was fired at -- a
+// green rocket, its exhaust burning and a trail of smoke behind it -- and
+// only then goes off; the zombies it kills are still there until it does.
+// Its blast is over the square it hit and the eight round it: every
 // square scorched and a fireball on it, a moment apart so it doesn't look
 // stamped out, and a big billowing one over them all; a flash and a
 // shockwave from the middle; sparks flying out, and smoke rising after. The
@@ -27,8 +30,12 @@
 
 class Explosions {
 public:
-  // A rocket has gone off on the square `at`.
-  void addRocket(Position at);
+  // A rocket fired from the square `from` at the square `at`, where it
+  // kills the zombies on `doomed` -- shown till it lands.
+  void addRocket(Position from, Position at, std::vector<Goban::Zombie> doomed);
+
+  // How long a rocket fired from `from` takes to land on `at`, in seconds.
+  static float FlightTime(Position from, Position at);
 
   // The figure on `from` has fired the shotgun, hitting `hit`.
   void addShotgun(Position from, const std::array<Position, 3>& hit);
@@ -59,6 +66,11 @@ private:
   struct Blast {
     bool                  rocket = true;  // a rocket's, or a shotgun's
     Position              heart;          // the square hit, or the shotgun's muzzle
+    Position              from;           // where a rocket was fired from
+    float                 flight = 0.0f;  // how long a rocket flies, before the blast
+    std::vector<Goban::Zombie> doomed;    // zombies the rocket kills, till it lands
+    std::vector<Puff>     trail;          // the smoke the rocket leaves as it flies
+    float                 sinceTrail = 0.0f;
     Vector2               aim{};          // the shotgun: which way it fired, a unit long
     std::vector<Position> squares;        // the squares it hit
     std::vector<float>    delays;         // when each square's fireball starts

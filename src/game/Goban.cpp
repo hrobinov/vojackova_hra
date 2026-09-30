@@ -17,10 +17,11 @@ int Sign(int value)
 
 }  // namespace
 
-void Goban::start(const Properties& figureStarts, const Properties& zombieStarts, int firstWave)
+void Goban::start(const Properties& figureStarts, const Properties& white, const Properties& black, int firstWave)
 {
-  this->figureProperties  = figureStarts;
-  this->zombieProperties  = zombieStarts;
+  this->figureProperties    = figureStarts;
+  this->zombieProperties[0] = white;
+  this->zombieProperties[1] = black;
   this->figure            = FIGURE_START;
   this->lives             = figureStarts.lives;
   this->rockets           = figureStarts.rockets;
@@ -28,6 +29,7 @@ void Goban::start(const Properties& figureStarts, const Properties& zombieStarts
   this->figureActionsLeft = figureStarts.actions;
   this->zombieActionsLeft = 0;
   this->earned            = 0;
+  this->deaths.clear();
   this->spawn(firstWave);
 }
 
@@ -40,30 +42,34 @@ void Goban::move(int dx, int dy)
   this->spendFigureAction();
 }
 
-void Goban::shoot(Position at)
+bool Goban::shoot(Position at)
 {
-  if (this->figureActionsLeft == 0) return;
+  if (this->figureActionsLeft == 0) return false;
   const auto target = std::find_if(this->horde.begin(), this->horde.end(), [at](const Zombie& z) { return z.at == at; });
-  if (target == this->horde.end()) return;
+  if (target == this->horde.end()) return false;
   // In a straight line, no further than the pistol reaches -- or across a
   // corner, but only right beside the figure.
   const int  dx       = std::abs(at.x - this->figure.x);
   const int  dy       = std::abs(at.y - this->figure.y);
   const bool straight = (dx == 0 || dy == 0) && dx + dy <= this->figureProperties.range;
   const bool corner   = dx == 1 && dy == 1;
-  if (!straight && !corner) return;
+  if (!straight && !corner) return false;
 
   target->lives -= this->figureProperties.wounds;
   this->afterHit();
+  return true;
 }
 
 bool Goban::fireRocket(Position at)
 {
   if (this->figureActionsLeft == 0 || this->rockets == 0 || !OnGoban(at)) return false;
   --this->rockets;
+  const auto inBlast = [at](Position square) { return std::abs(square.x - at.x) <= 1 && std::abs(square.y - at.y) <= 1; };
   for (Zombie& zombie : this->horde) {
-    if (std::abs(zombie.at.x - at.x) <= 1 && std::abs(zombie.at.y - at.y) <= 1) zombie.lives -= ROCKET_WOUNDS;
+    if (inBlast(zombie.at)) zombie.lives -= ROCKET_WOUNDS;
   }
+  // Too close, and the figure is hit too.
+  if (inBlast(this->figure)) this->lives = std::max(0, this->lives - ROCKET_WOUNDS);
   this->afterHit();
   return true;
 }
@@ -99,9 +105,18 @@ bool Goban::fireShotgun(Position at)
 
 void Goban::afterHit()
 {
-  const size_t before = this->horde.size();
+  for (const Zombie& zombie : this->horde) {
+    if (zombie.lives > 0) continue;
+    this->deaths.push_back(zombie);
+    this->earned += zombie.kind == Kind::Black ? BLACK_ZOMBIE_REWARD : ZOMBIE_REWARD;
+  }
   std::erase_if(this->horde, [](const Zombie& zombie) { return zombie.lives <= 0; });
-  this->earned += int(before - this->horde.size()) * ZOMBIE_REWARD;
+  // The figure killed by its own rocket: nobody moves any more.
+  if (this->lives == 0) {
+    this->figureActionsLeft = 0;
+    this->zombieActionsLeft = 0;
+    return;
+  }
   // The last of the wave: the figure back in the middle for the next, and
   // with the whole of a turn before it.
   if (this->horde.empty()) {
@@ -120,19 +135,27 @@ void Goban::wait()
 
 void Goban::spendFigureAction()
 {
-  if (--this->figureActionsLeft == 0) this->zombieActionsLeft = this->zombieProperties.actions;
+  if (--this->figureActionsLeft > 0) return;
+  // The zombies' turn: as many actions as the busiest of them has.
+  this->zombieActions = 0;
+  for (const Zombie& zombie : this->horde) this->zombieActions = std::max(this->zombieActions, this->properties(zombie.kind).actions);
+  this->zombieActionsLeft = this->zombieActions;
+  if (this->zombieActionsLeft == 0) this->figureActionsLeft = this->figureProperties.actions;
 }
 
 void Goban::zombieAction()
 {
   if (this->zombieActionsLeft == 0) return;
 
+  // Which of the turn's actions this is: a zombie with fewer sits it out.
+  const int action = this->zombieActions - this->zombieActionsLeft;
   for (Zombie& zombie : this->horde) {
+    if (action >= this->properties(zombie.kind).actions) continue;
     const int dx = this->figure.x - zombie.at.x;
     const int dy = this->figure.y - zombie.at.y;
     if (std::abs(dx) + std::abs(dy) == 1) {
       // Beside the figure: an attack. Lives don't go below none.
-      this->lives = std::max(0, this->lives - this->zombieProperties.wounds);
+      this->lives = std::max(0, this->lives - this->properties(zombie.kind).wounds);
       continue;
     }
     // A step towards the figure, along the way it is further off -- up or
@@ -162,8 +185,15 @@ void Goban::spawn(int count)
 {
   this->wave = count;
   this->horde.clear();
+  // Each zombie black by chance, the further the wave the likelier.
+  const int chance = count >= MORE_BLACK_FROM ? MORE_BLACK_CHANCE : count >= BLACK_FROM ? BLACK_CHANCE : 0;
+  std::uniform_int_distribution<int> percent(0, 99);
+  const auto kind = [&] { return percent(this->random) < chance ? Kind::Black : Kind::White; };
   // The first where it always starts, unless the figure is standing there.
-  if (this->free(ZOMBIE_START)) this->horde.push_back({ ZOMBIE_START, this->zombieProperties.lives });
+  if (this->free(ZOMBIE_START)) {
+    const Kind first = kind();
+    this->horde.push_back({ ZOMBIE_START, this->properties(first).lives, first });
+  }
   // The rest on free squares picked at random -- never the red one in the
   // middle, where the figure starts. There are always enough, but for a wave
   // bigger than the goban.
@@ -176,7 +206,8 @@ void Goban::spawn(int count)
     }
     if (squares.empty()) break;
     std::uniform_int_distribution<size_t> pick(0, squares.size() - 1);
-    this->horde.push_back({ squares[pick(this->random)], this->zombieProperties.lives });
+    const Kind which = kind();
+    this->horde.push_back({ squares[pick(this->random)], this->properties(which).lives, which });
   }
 }
 
